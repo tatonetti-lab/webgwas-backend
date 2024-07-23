@@ -15,6 +15,7 @@ dependencies = [
     "cachetools>=5.4.0",
     "webgwas @ git+https://github.com/zietzm/webgwas",
     "pandas>=2.2.2",
+    "pydantic-settings>=2.3.4",
 ]
 readme = "README.md"
 requires-python = ">= 3.12"

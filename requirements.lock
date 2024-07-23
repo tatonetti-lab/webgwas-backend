@@ -74,16 +74,20 @@ psutil==6.0.0
     # via webgwas-fastapi
 pydantic==2.8.2
     # via fastapi
+    # via pydantic-settings
     # via sqlmodel
     # via webgwas-fastapi
 pydantic-core==2.20.1
     # via pydantic
+pydantic-settings==2.3.4
+    # via webgwas-fastapi
 pygments==2.18.0
     # via rich
 python-dateutil==2.9.0.post0
     # via botocore
     # via pandas
 python-dotenv==1.0.1
+    # via pydantic-settings
     # via uvicorn
 python-multipart==0.0.9
     # via fastapi

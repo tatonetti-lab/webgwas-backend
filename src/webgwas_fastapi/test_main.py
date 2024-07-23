@@ -1,25 +1,42 @@
-import json
+from typing import Annotated
 
 import pytest
+from fastapi import Depends
 from fastapi.testclient import TestClient
 
+from webgwas_fastapi.config import Settings
 from webgwas_fastapi.data_client import DataClient
-from webgwas_fastapi.main import app, get_data_client, get_s3_client
+from webgwas_fastapi.main import app, get_data_client, get_s3_client, get_settings
 from webgwas_fastapi.s3_client import S3MockClient
 
 client = TestClient(app)
 
-with open(
-    "/Users/zietzm/Documents/projects/webgwas-frontend/"
-    "webgwas-fastapi/test_data/config.json"
-) as f:
-    settings = json.load(f)
 
-mock_data_client = DataClient.model_validate(settings["data_client"])
-mock_s3_client = S3MockClient()
+def get_settings_override():
+    return Settings(  # type: ignore
+        _env_file=(  # type: ignore
+            "/Users/zietzm/Documents/projects/webgwas-frontend/"
+            "webgwas-fastapi/test_data/settings.json"
+        ),
+        _env_file_encoding="utf-8",  # type: ignore
+    )
 
-app.dependency_overrides[get_data_client] = lambda: mock_data_client
-app.dependency_overrides[get_s3_client] = lambda: mock_s3_client
+
+def get_data_client_override(
+    settings: Annotated[Settings, Depends(get_settings_override)],
+):
+    return DataClient.model_validate(settings.data_client, from_attributes=True)
+
+
+def get_s3_client_override(
+    settings: Annotated[Settings, Depends(get_settings_override)],
+):
+    return S3MockClient()  # type: ignore
+
+
+app.dependency_overrides[get_settings] = get_settings_override
+app.dependency_overrides[get_data_client] = get_data_client_override
+app.dependency_overrides[get_s3_client] = get_s3_client_override
 
 
 def test_get_cohorts():

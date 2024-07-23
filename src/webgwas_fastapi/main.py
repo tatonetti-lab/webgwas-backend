@@ -1,12 +1,9 @@
 import functools
-import json
 import logging
 import tempfile
 import uuid
-from pathlib import Path
 from typing import Annotated
 
-import pandas as pd
 import webgwas.igwas
 import webgwas.parser
 import webgwas.regression
@@ -14,8 +11,10 @@ from botocore.exceptions import ClientError
 from cachetools import LRUCache, cached
 from cachetools.keys import hashkey
 from fastapi import Depends, FastAPI, HTTPException
-from pydantic import BaseModel
+from pandas import Series
+from pydantic import BaseModel, Field
 
+from webgwas_fastapi.config import Settings
 from webgwas_fastapi.data_client import DataClient
 from webgwas_fastapi.s3_client import S3Client, S3MockClient
 
@@ -24,27 +23,20 @@ logger.setLevel(logging.INFO)
 
 app = FastAPI()
 
-DATA_DIR = Path(__file__).parent.joinpath("data")
-RESULT_DIR = DATA_DIR.joinpath("igwas_results")
 
-CACHE_SIZE = 100
-S3_BUCKET = "webgwas-results"
-
-with open(
-    "/Users/zietzm/Documents/projects/webgwas-frontend/webgwas-fastapi/test_data/config.json"
-) as f:
-    settings = json.load(f)
-
-global_data_client = DataClient.model_validate(settings["data_client"])
-global_s3_client = S3MockClient()
+@functools.lru_cache(maxsize=1)
+def get_settings():
+    return Settings()  # type: ignore
 
 
-def get_data_client():
-    return global_data_client
+@cached(cache=LRUCache(maxsize=1), key=lambda settings: hashkey(True))
+def get_data_client(settings: Annotated[Settings, Depends(get_settings)]):
+    return DataClient.model_validate(settings.data_client, from_attributes=True)
 
 
-def get_s3_client():
-    return global_s3_client
+@cached(cache=LRUCache(maxsize=1), key=lambda settings: hashkey(True))
+def get_s3_client(settings: Annotated[Settings, Depends(get_settings)]):
+    return S3MockClient()  # type: ignore
 
 
 def validate_cohort(
@@ -60,21 +52,29 @@ def validate_cohort(
 
 
 class WebGWASRequest(BaseModel):
-    """Request for running an IGWAS.
+    """Request for GWAS summary statistics"""
 
-    Defined so that users can pass phenotype definitions in a JSON body instead of
-    a query string in the URL.
-    """
-
-    phenotype_definition: str
-    cohort: str
+    phenotype_definition: str = Field(
+        ...,
+        description=(
+            "Phenotype definition in reverse polish notation. "
+            "See https://github.com/zietzm/webgwas#phenotype-definitions"
+        ),
+    )
+    cohort: str = Field(
+        ...,
+        description=(
+            "Cohort for which to run the GWAS. "
+            "See https://github.com/zietzm/webgwas#cohorts"
+        ),
+    )
 
 
 class WebGWASResult(BaseModel):
-    """Result of an IGWAS."""
+    """Result of a successful GWAS"""
 
-    request_id: str
-    url: str
+    request_id: str = Field(..., description="Unique identifier for the request.")
+    url: str = Field(..., description="URL to the result file. ")
 
 
 @app.get("/api/cohorts", response_model=list[str])
@@ -92,12 +92,14 @@ def get_fields(
 
 @app.post("/api/igwas", response_model=WebGWASResult)
 def post_igwas(
+    settings: Annotated[Settings, Depends(get_settings)],
     data_client: Annotated[DataClient, Depends(get_data_client)],
     s3_client: Annotated[S3Client, Depends(get_s3_client)],
     request: WebGWASRequest,
 ) -> WebGWASResult:
     validate_cohort(data_client=data_client, cohort=request.cohort)
     return handle_igwas(
+        settings=settings,
         data_client=data_client,
         s3_client=s3_client,
         phenotype_definition=request.phenotype_definition,
@@ -105,35 +107,20 @@ def post_igwas(
     )
 
 
-run_igwas = functools.partial(
-    webgwas.igwas.igwas_files,
-    num_covar=settings["indirect_gwas"]["num_covar"],
-    chunksize=settings["indirect_gwas"]["chunk_size"],
-    variant_id="ID",
-    beta="BETA",
-    std_error="SE",
-    sample_size="OBS_CT",
-    num_threads=settings["indirect_gwas"]["num_threads"],
-    capacity=settings["indirect_gwas"]["capacity"],
-    compress=settings["indirect_gwas"]["compress"],
-    quiet=settings["indirect_gwas"]["quiet"],
-)
-
-
 @cached(
-    cache=LRUCache(maxsize=CACHE_SIZE),
-    key=lambda data_client, s3_client, phenotype_definition, cohort: hashkey(
+    cache=LRUCache(maxsize=get_settings().lru_cache_size),
+    key=lambda settings, data_client, s3_client, phenotype_definition, cohort: hashkey(
         phenotype_definition, cohort
     ),
 )
 def handle_igwas(
+    settings: Annotated[Settings, Depends(get_settings)],
     data_client: Annotated[DataClient, Depends(get_data_client)],
     s3_client: Annotated[S3Client, Depends(get_s3_client)],
     phenotype_definition: str,
     cohort: str,
 ) -> WebGWASResult:
-    request_id = str(uuid.uuid4())
-    # TODO: Use this in logs
+    request_id = str(uuid.uuid4())  # TODO: Use this in logs
 
     # Parse the phenotype definition
     try:
@@ -149,7 +136,7 @@ def handle_igwas(
         target_phenotype = features_df.apply(
             lambda row: parser.apply_definition(row), axis=1
         )
-        assert isinstance(target_phenotype, pd.Series)
+        assert isinstance(target_phenotype, Series)
     except Exception as e:
         raise HTTPException(
             status_code=500, detail=f"Error applying phenotype definition: {e}"
@@ -177,17 +164,34 @@ def handle_igwas(
         )
         beta_file.flush()
         try:
-            run_igwas(beta_file.name, cov_path, gwas_paths, output_file.name)
+            webgwas.igwas.igwas_files(
+                projection_matrix_path=beta_file.name,
+                covariance_matrix_path=cov_path.as_posix(),
+                gwas_result_paths=[p.as_posix() for p in gwas_paths],
+                output_file_path=output_file.name,
+                num_covar=settings.indirect_gwas.num_covar,
+                chunksize=settings.indirect_gwas.chunk_size,
+                variant_id="ID",
+                beta="BETA",
+                std_error="SE",
+                sample_size="OBS_CT",
+                num_threads=settings.indirect_gwas.num_threads,
+                capacity=settings.indirect_gwas.capacity,
+                compress=settings.indirect_gwas.compress,
+                quiet=settings.indirect_gwas.quiet,
+            )
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error in IGWAS: {e}")
+            raise HTTPException(status_code=500, detail=f"Error in indirect GWAS: {e}")
 
         # Upload the result to S3
         output_file_path = f"{request_id}.tsv.zst"
         try:
-            s3_client.upload_file(output_file.name, S3_BUCKET, output_file_path)
+            s3_client.upload_file(
+                output_file.name, settings.s3_bucket, output_file_path
+            )
         except ClientError as e:
             raise HTTPException(status_code=500, detail=f"Error uploading file: {e}")
 
     return WebGWASResult(
-        request_id=request_id, url=f"https://{S3_BUCKET}/{output_file_path}"
+        request_id=request_id, url=f"https://{settings.s3_bucket}/{output_file_path}"
     )

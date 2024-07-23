@@ -1,12 +1,10 @@
 from pathlib import Path
 
 import pandas as pd
-from pydantic import BaseModel, ConfigDict
+from pydantic import BaseModel
 
 
 class DataClient(BaseModel):
-    model_config = ConfigDict(arbitrary_types_allowed=True)
-
     data_path: Path
     cohorts: list[str]
     cohort_to_features: dict[str, list[str]]
