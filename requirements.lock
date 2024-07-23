@@ -69,6 +69,7 @@ orjson==3.10.6
     # via fastapi
 pandas==2.2.2
     # via webgwas
+    # via webgwas-fastapi
 psutil==6.0.0
     # via webgwas-fastapi
 pydantic==2.8.2

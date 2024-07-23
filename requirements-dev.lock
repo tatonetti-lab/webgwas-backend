@@ -73,6 +73,7 @@ packaging==24.1
     # via pytest
 pandas==2.2.2
     # via webgwas
+    # via webgwas-fastapi
 pluggy==1.5.0
     # via pytest
 psutil==6.0.0
