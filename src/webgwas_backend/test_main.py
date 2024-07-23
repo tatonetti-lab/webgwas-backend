@@ -7,10 +7,10 @@ from cachetools.keys import hashkey
 from fastapi import Depends
 from fastapi.testclient import TestClient
 
-from webgwas_fastapi.config import Settings
-from webgwas_fastapi.data_client import DataClient
-from webgwas_fastapi.main import app, get_data_client, get_s3_client, get_settings
-from webgwas_fastapi.s3_client import S3MockClient
+from webgwas_backend.config import Settings
+from webgwas_backend.data_client import DataClient
+from webgwas_backend.main import app, get_data_client, get_s3_client, get_settings
+from webgwas_backend.s3_client import S3MockClient
 
 client = TestClient(app)
 

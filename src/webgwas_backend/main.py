@@ -14,9 +14,9 @@ from fastapi import Depends, FastAPI, HTTPException
 from pandas import Series
 from pydantic import BaseModel, Field
 
-from webgwas_fastapi.config import Settings
-from webgwas_fastapi.data_client import DataClient, GWASCohort
-from webgwas_fastapi.s3_client import S3Client, S3ProdClient
+from webgwas_backend.config import Settings
+from webgwas_backend.data_client import DataClient, GWASCohort
+from webgwas_backend.s3_client import S3Client, S3ProdClient
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)

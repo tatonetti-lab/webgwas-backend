@@ -1,5 +1,5 @@
 [project]
-name = "webgwas-fastapi"
+name = "webgwas-backend"
 version = "0.1.0"
 description = "Add your description here"
 authors = [
@@ -35,4 +35,4 @@ dev-dependencies = [
 allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/webgwas_fastapi"]
+packages = ["src/webgwas_backend"]
