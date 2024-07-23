@@ -2,8 +2,6 @@ import pathlib
 import tempfile
 from abc import ABC, abstractmethod
 
-import boto3
-
 
 class S3Client(ABC):
     @abstractmethod
@@ -12,8 +10,8 @@ class S3Client(ABC):
 
 
 class S3ProdClient(S3Client):
-    def __init__(self, bucket: str = "webgwas"):
-        self.s3_client = boto3.client("s3")
+    def __init__(self, s3_client, bucket: str = "webgwas"):
+        self.s3_client = s3_client
         self.bucket = bucket
 
     def upload_file(self, local_path, key):

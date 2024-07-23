@@ -4,6 +4,7 @@ import tempfile
 import uuid
 from typing import Annotated
 
+import boto3
 import webgwas.igwas
 import webgwas.parser
 import webgwas.regression
@@ -21,6 +22,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 app = FastAPI()
+s3 = boto3.client("s3")
 
 
 @functools.lru_cache(maxsize=1)
@@ -35,8 +37,7 @@ def get_data_client(settings: Annotated[Settings, Depends(get_settings)]):
 
 @cached(cache=LRUCache(maxsize=1), key=lambda settings: hashkey(True))
 def get_s3_client(settings: Annotated[Settings, Depends(get_settings)]):
-    logger.info(f"Creating S3 client for bucket {settings.s3_bucket}")
-    return S3ProdClient(bucket=settings.s3_bucket)
+    return S3ProdClient(s3_client=s3, bucket=settings.s3_bucket)
 
 
 def validate_cohort(
