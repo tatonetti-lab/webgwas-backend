@@ -24,13 +24,13 @@ app.dependency_overrides[get_s3_client] = lambda: mock_s3_client
 
 def test_get_cohorts():
     response = client.get("/api/cohorts")
-    assert response.status_code == 200
+    assert response.status_code == 200, response.json()
     assert response.json() == ["cohort1", "cohort2"]
 
 
 def test_get_fields():
     response = client.get("/api/fields?cohort=cohort1")
-    assert response.status_code == 200
+    assert response.status_code == 200, response.json()
     assert response.json() == ["feature1", "feature2", "feature3"]
 
 
@@ -51,13 +51,13 @@ def test_post_igwas(phenotype_definition, cohort):
             "cohort": cohort,
         },
     )
-    assert response.status_code == 200
+    assert response.status_code == 200, response.json()
     assert set(response.json().keys()) == {"request_id", "url"}
 
 
 def test_get_fields_invalid_cohort():
     response = client.get("/api/fields?cohort=invalid_cohort")
-    assert response.status_code == 404
+    assert response.status_code == 404, response.json()
     assert response.json() == {"detail": "Cohort `invalid_cohort` not found"}
 
 
@@ -76,7 +76,7 @@ def test_post_igwas_invalid_cohort(phenotype_definition):
             "cohort": "invalid_cohort",
         },
     )
-    assert response.status_code == 404
+    assert response.status_code == 404, response.json()
     assert response.json() == {"detail": "Cohort `invalid_cohort` not found"}
 
 
@@ -88,7 +88,7 @@ def test_post_igwas_invalid_phenotype_definition():
             "cohort": "cohort1",
         },
     )
-    assert response.status_code == 400
+    assert response.status_code == 400, response.json()
     assert response.json() == {
         "detail": (
             "Error parsing phenotype: Unknown char 'i' in "
