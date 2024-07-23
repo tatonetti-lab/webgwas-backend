@@ -1,12 +1,21 @@
+import json
+
 import pytest
 from fastapi.testclient import TestClient
 
-from webgwas_fastapi.data_client import DataMockClient
+from webgwas_fastapi.data_client import DataClient
 from webgwas_fastapi.main import app, get_data_client, get_s3_client
 from webgwas_fastapi.s3_client import S3MockClient
 
 client = TestClient(app)
-mock_data_client = DataMockClient()
+
+with open(
+    "/Users/zietzm/Documents/projects/webgwas-frontend/"
+    "webgwas-fastapi/test_data/config.json"
+) as f:
+    settings = json.load(f)
+
+mock_data_client = DataClient.model_validate(settings["data_client"])
 mock_s3_client = S3MockClient()
 
 app.dependency_overrides[get_data_client] = lambda: mock_data_client

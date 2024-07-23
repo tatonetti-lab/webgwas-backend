@@ -1,4 +1,5 @@
 import functools
+import json
 import logging
 import tempfile
 import uuid
@@ -6,7 +7,6 @@ from pathlib import Path
 from typing import Annotated
 
 import pandas as pd
-import psutil
 import webgwas.igwas
 import webgwas.parser
 import webgwas.regression
@@ -14,22 +14,15 @@ from botocore.exceptions import ClientError
 from cachetools import LRUCache, cached
 from cachetools.keys import hashkey
 from fastapi import Depends, FastAPI, HTTPException
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel
 
 from webgwas_fastapi.data_client import DataClient
-from webgwas_fastapi.s3_client import S3Client
+from webgwas_fastapi.s3_client import S3Client, S3MockClient
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 app = FastAPI()
-
-NUM_COVAR = 12
-NUM_THREADS = psutil.cpu_count()
-CHUNK_SIZE = 1_000_000
-CAPACITY = 25
-COMPRESS = True
-QUIET = False
 
 DATA_DIR = Path(__file__).parent.joinpath("data")
 RESULT_DIR = DATA_DIR.joinpath("igwas_results")
@@ -37,19 +30,30 @@ RESULT_DIR = DATA_DIR.joinpath("igwas_results")
 CACHE_SIZE = 100
 S3_BUCKET = "webgwas-results"
 
+with open(
+    "/Users/zietzm/Documents/projects/webgwas-frontend/webgwas-fastapi/test_data/config.json"
+) as f:
+    settings = json.load(f)
+
+global_data_client = DataClient.model_validate(settings["data_client"])
+global_s3_client = S3MockClient()
+
 
 def get_data_client():
-    raise NotImplementedError("get_data_client not implemented")
+    return global_data_client
 
 
 def get_s3_client():
-    raise NotImplementedError("get_s3_client not implemented")
+    return global_s3_client
 
 
 def validate_cohort(
     data_client: Annotated[DataClient, Depends(get_data_client)], cohort: str
 ):
-    result = data_client.validate_cohort(cohort)
+    try:
+        result = data_client.validate_cohort(cohort)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error validating cohort: {e}")
     if result is None:
         raise HTTPException(status_code=404, detail=f"Cohort `{cohort}` not found")
     return result
@@ -103,16 +107,16 @@ def post_igwas(
 
 run_igwas = functools.partial(
     webgwas.igwas.igwas_files,
-    num_covar=NUM_COVAR,
-    chunksize=CHUNK_SIZE,
+    num_covar=settings["indirect_gwas"]["num_covar"],
+    chunksize=settings["indirect_gwas"]["chunk_size"],
     variant_id="ID",
     beta="BETA",
     std_error="SE",
     sample_size="OBS_CT",
-    num_threads=NUM_THREADS,
-    capacity=CAPACITY,
-    compress=COMPRESS,
-    quiet=QUIET,
+    num_threads=settings["indirect_gwas"]["num_threads"],
+    capacity=settings["indirect_gwas"]["capacity"],
+    compress=settings["indirect_gwas"]["compress"],
+    quiet=settings["indirect_gwas"]["quiet"],
 )
 
 
