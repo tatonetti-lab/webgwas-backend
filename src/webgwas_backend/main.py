@@ -151,10 +151,7 @@ def handle_igwas(
     del features_df  # Free up memory
 
     # Indirect GWAS
-    with (
-        tempfile.NamedTemporaryFile(suffix=".csv") as beta_file,
-        tempfile.NamedTemporaryFile(suffix=".tsv.zst") as output_file,
-    ):
+    with tempfile.NamedTemporaryFile(suffix=".csv") as beta_file:
         (
             beta_series.round(5)
             .rename(request_id)
@@ -163,12 +160,13 @@ def handle_igwas(
             .to_csv(beta_file)
         )
         beta_file.flush()
+        output_file_path = f"{request_id}.tsv.zst"
         try:
             webgwas.igwas.igwas_files(
                 projection_matrix_path=beta_file.name,
                 covariance_matrix_path=cov_path.as_posix(),
                 gwas_result_paths=[p.as_posix() for p in gwas_paths],
-                output_file_path=output_file.name,
+                output_file_path=output_file_path,
                 num_covar=cohort.num_covar,
                 chunksize=settings.indirect_gwas.chunk_size,
                 variant_id="ID",
@@ -183,13 +181,15 @@ def handle_igwas(
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error in indirect GWAS: {e}")
 
-        # Upload the result to S3
-        output_file_path = f"{request_id}.tsv.zst"
-        try:
-            s3_client.upload_file(output_file.name, output_file_path)
-        except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error uploading file: {e}")
+    # Upload the result to S3
+    try:
+        s3_client.upload_file(output_file_path, output_file_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error uploading file: {e}")
 
-    return WebGWASResult(
-        request_id=request_id, url=f"https://{settings.s3_bucket}/{output_file_path}"
-    )
+    try:
+        presigned_url = s3_client.get_presigned_url(output_file_path)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Error getting presigned URL: {e}")
+
+    return WebGWASResult(request_id=request_id, url=presigned_url)

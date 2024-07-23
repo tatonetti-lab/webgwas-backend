@@ -8,6 +8,10 @@ class S3Client(ABC):
     def upload_file(self, local_path, key):
         pass
 
+    @abstractmethod
+    def get_presigned_url(self, key) -> str:
+        pass
+
 
 class S3ProdClient(S3Client):
     def __init__(self, s3_client, bucket: str = "webgwas"):
@@ -16,6 +20,13 @@ class S3ProdClient(S3Client):
 
     def upload_file(self, local_path, key):
         self.s3_client.upload_file(local_path, self.bucket, key)
+
+    def get_presigned_url(self, key):
+        return self.s3_client.generate_presigned_url(
+            ClientMethod="get_object",
+            Params={"Bucket": self.bucket, "Key": key},
+            ExpiresIn=60 * 60 * 3,  # 3 hours
+        )
 
 
 class S3MockClient(S3Client):
@@ -29,3 +40,6 @@ class S3MockClient(S3Client):
         pathlib.Path(local_path).rename(self.data_dir / key)
         bucket_keys = self.files.setdefault(self.bucket, {})
         bucket_keys[key] = self.data_dir / key
+
+    def get_presigned_url(self, key):
+        return f"https://{self.bucket}.s3.amazonaws.com/{key}"
