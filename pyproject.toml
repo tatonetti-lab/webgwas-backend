@@ -16,6 +16,7 @@ dependencies = [
     "webgwas @ git+https://github.com/zietzm/webgwas",
     "pandas>=2.2.2",
     "pydantic-settings>=2.3.4",
+    "zstandard>=0.23.0",
 ]
 readme = "README.md"
 requires-python = ">= 3.12"

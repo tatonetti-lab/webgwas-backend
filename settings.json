@@ -1,40 +1,14 @@
 {
     "lru_cache_size": 100,
-    "s3_bucket": "webgwas-results",
+    "s3_bucket": "webgwas",
     "indirect_gwas": {
-        "num_covar": 12,
         "num_threads": 16,
         "chunk_size": 1000000,
         "capacity": 25,
         "compress": true,
         "quiet": false
     },
-    "data_client": {
-        "data_path": "/Users/zietzm/Documents/projects/webgwas-frontend/webgwas-fastapi/test_data/",
-        "cohorts": ["cohort1", "cohort2"],
-        "cohort_to_features": {
-            "cohort1": ["feature1", "feature2", "feature3"],
-            "cohort2": ["feature1", "feature2", "feature3"]
-        },
-        "cohort_to_data": {
-            "cohort1": "cohort1.csv",
-            "cohort2": "cohort2.csv"
-        },
-        "cohort_to_covariance": {
-            "cohort1": "covariance_matrix_1.csv",
-            "cohort2": "covariance_matrix_2.csv"
-        },
-        "cohort_to_gwas": {
-            "cohort1": [
-                "feature1.tsv",
-                "feature2.tsv",
-                "feature3.tsv"
-            ],
-            "cohort2": [
-                "feature1.tsv",
-                "feature2.tsv",
-                "feature3.tsv"
-            ]
-        }
-    }
+    "cohort_paths": [ 
+        "test_data/cohort1"
+    ]
 }

@@ -1,17 +1,14 @@
-from typing import Type
+from __future__ import annotations
+
+import json
+from typing import Any
 
 import psutil
 from pydantic import BaseModel, DirectoryPath, Field
-from pydantic_settings import (
-    BaseSettings,
-    JsonConfigSettingsSource,
-    PydanticBaseSettingsSource,
-    SettingsConfigDict,
-)
+from pydantic_settings import BaseSettings
 
 
 class IndirectGWASSettings(BaseModel):
-    num_covar: int = Field(12, description="Number of covariates")
     num_threads: int = Field(psutil.cpu_count(), description="Number of threads")
     chunk_size: int = Field(1000000, description="Chunk size (in variants)")
     capacity: int = Field(25, description="Capacity (in phenotypes)")
@@ -19,38 +16,17 @@ class IndirectGWASSettings(BaseModel):
     quiet: bool = Field(False, description="Quiet mode")
 
 
-class DataDirectorySettings(BaseModel):
-    data_path: DirectoryPath
-    cohorts: list[str]
-    cohort_to_features: dict[str, list[str]]
-    cohort_to_data: dict[str, str]
-    cohort_to_covariance: dict[str, str]
-    cohort_to_gwas: dict[str, list[str]]
-
-
 class Settings(BaseSettings):
-    model_config = SettingsConfigDict(
-        json_file="settings.json", json_file_encoding="utf-8"
-    )
-
     lru_cache_size: int = 100
-    s3_bucket: str = "webgwas-results"
+    s3_bucket: str = "webgwas"
     indirect_gwas: IndirectGWASSettings
-    data_client: DataDirectorySettings
+    cohort_paths: list[DirectoryPath]
 
     @classmethod
-    def settings_customise_sources(
-        cls,
-        settings_cls: Type[BaseSettings],
-        init_settings: PydanticBaseSettingsSource,
-        env_settings: PydanticBaseSettingsSource,
-        dotenv_settings: PydanticBaseSettingsSource,
-        file_secret_settings: PydanticBaseSettingsSource,
-    ) -> tuple[PydanticBaseSettingsSource, ...]:
-        return (
-            init_settings,
-            env_settings,
-            dotenv_settings,
-            file_secret_settings,
-            JsonConfigSettingsSource(settings_cls),
-        )
+    def from_json(cls, json_data: dict[str, Any]) -> Settings:
+        return cls.model_validate(json_data)
+
+    @classmethod
+    def from_json_file(cls, json_file: str) -> Settings:
+        with open(json_file) as f:
+            return cls.from_json(json.load(f))

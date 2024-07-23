@@ -15,8 +15,8 @@ from pandas import Series
 from pydantic import BaseModel, Field
 
 from webgwas_fastapi.config import Settings
-from webgwas_fastapi.data_client import DataClient
-from webgwas_fastapi.s3_client import S3Client, S3MockClient
+from webgwas_fastapi.data_client import DataClient, GWASCohort
+from webgwas_fastapi.s3_client import S3Client, S3ProdClient
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
@@ -26,28 +26,28 @@ app = FastAPI()
 
 @functools.lru_cache(maxsize=1)
 def get_settings():
-    return Settings()  # type: ignore
+    return Settings.from_json_file("settings.json")
 
 
 @cached(cache=LRUCache(maxsize=1), key=lambda settings: hashkey(True))
 def get_data_client(settings: Annotated[Settings, Depends(get_settings)]):
-    return DataClient.model_validate(settings.data_client, from_attributes=True)
+    return DataClient.from_paths(settings.cohort_paths)
 
 
 @cached(cache=LRUCache(maxsize=1), key=lambda settings: hashkey(True))
 def get_s3_client(settings: Annotated[Settings, Depends(get_settings)]):
-    return S3MockClient()  # type: ignore
+    return S3ProdClient(bucket=settings.s3_bucket)
 
 
 def validate_cohort(
-    data_client: Annotated[DataClient, Depends(get_data_client)], cohort: str
-):
+    data_client: Annotated[DataClient, Depends(get_data_client)], cohort_name: str
+) -> GWASCohort:
     try:
-        result = data_client.validate_cohort(cohort)
+        result = data_client.validate_cohort(cohort_name)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error validating cohort: {e}")
     if result is None:
-        raise HTTPException(status_code=404, detail=f"Cohort `{cohort}` not found")
+        raise HTTPException(status_code=404, detail=f"Cohort `{cohort_name}` not found")
     return result
 
 
@@ -61,7 +61,7 @@ class WebGWASRequest(BaseModel):
             "See https://github.com/zietzm/webgwas#phenotype-definitions"
         ),
     )
-    cohort: str = Field(
+    cohort_name: str = Field(
         ...,
         description=(
             "Cohort for which to run the GWAS. "
@@ -83,11 +83,8 @@ def get_cohorts(data_client: Annotated[DataClient, Depends(get_data_client)]):
 
 
 @app.get("/api/fields", response_model=list[str])
-def get_fields(
-    data_client: Annotated[DataClient, Depends(get_data_client)],
-    cohort: Annotated[str, Depends(validate_cohort)],
-):
-    return data_client.get_features(cohort)
+def get_fields(cohort: Annotated[GWASCohort, Depends(validate_cohort)]):
+    return cohort.feature_names
 
 
 @app.post("/api/igwas", response_model=WebGWASResult)
@@ -97,20 +94,20 @@ def post_igwas(
     s3_client: Annotated[S3Client, Depends(get_s3_client)],
     request: WebGWASRequest,
 ) -> WebGWASResult:
-    validate_cohort(data_client=data_client, cohort=request.cohort)
+    cohort = validate_cohort(data_client=data_client, cohort_name=request.cohort_name)
     return handle_igwas(
         settings=settings,
         data_client=data_client,
         s3_client=s3_client,
         phenotype_definition=request.phenotype_definition,
-        cohort=request.cohort,
+        cohort=cohort,
     )
 
 
 @cached(
     cache=LRUCache(maxsize=get_settings().lru_cache_size),
     key=lambda settings, data_client, s3_client, phenotype_definition, cohort: hashkey(
-        phenotype_definition, cohort
+        phenotype_definition, cohort.cohort_name
     ),
 )
 def handle_igwas(
@@ -118,7 +115,7 @@ def handle_igwas(
     data_client: Annotated[DataClient, Depends(get_data_client)],
     s3_client: Annotated[S3Client, Depends(get_s3_client)],
     phenotype_definition: str,
-    cohort: str,
+    cohort: GWASCohort,
 ) -> WebGWASResult:
     request_id = str(uuid.uuid4())  # TODO: Use this in logs
 
@@ -129,7 +126,9 @@ def handle_igwas(
         raise HTTPException(status_code=400, detail=f"Error parsing phenotype: {e}")
 
     # Load data, assign the target phenotype
-    features_df, cov_path, gwas_paths = data_client.get_data_cov_gwas_unchecked(cohort)
+    features_df, cov_path, gwas_paths = data_client.get_data_cov_gwas_unchecked(
+        cohort.cohort_name
+    )
 
     # Assign the target phenotype
     try:
@@ -169,7 +168,7 @@ def handle_igwas(
                 covariance_matrix_path=cov_path.as_posix(),
                 gwas_result_paths=[p.as_posix() for p in gwas_paths],
                 output_file_path=output_file.name,
-                num_covar=settings.indirect_gwas.num_covar,
+                num_covar=cohort.num_covar,
                 chunksize=settings.indirect_gwas.chunk_size,
                 variant_id="ID",
                 beta="BETA",
@@ -186,9 +185,7 @@ def handle_igwas(
         # Upload the result to S3
         output_file_path = f"{request_id}.tsv.zst"
         try:
-            s3_client.upload_file(
-                output_file.name, settings.s3_bucket, output_file_path
-            )
+            s3_client.upload_file(output_file.name, output_file_path)
         except ClientError as e:
             raise HTTPException(status_code=500, detail=f"Error uploading file: {e}")
 

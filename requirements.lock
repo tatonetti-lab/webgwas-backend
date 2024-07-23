@@ -136,3 +136,5 @@ webgwas @ git+https://github.com/zietzm/webgwas@421cd51d09da8ebad0a82c08c825a086
     # via webgwas-fastapi
 websockets==12.0
     # via uvicorn
+zstandard==0.23.0
+    # via webgwas-fastapi

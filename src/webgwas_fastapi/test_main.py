@@ -1,6 +1,9 @@
+import functools
 from typing import Annotated
 
 import pytest
+from cachetools import LRUCache, cached
+from cachetools.keys import hashkey
 from fastapi import Depends
 from fastapi.testclient import TestClient
 
@@ -12,26 +15,23 @@ from webgwas_fastapi.s3_client import S3MockClient
 client = TestClient(app)
 
 
+@functools.lru_cache(maxsize=1)
 def get_settings_override():
-    return Settings(  # type: ignore
-        _env_file=(  # type: ignore
-            "/Users/zietzm/Documents/projects/webgwas-frontend/"
-            "webgwas-fastapi/test_data/settings.json"
-        ),
-        _env_file_encoding="utf-8",  # type: ignore
-    )
+    return Settings.from_json_file("test_data/settings.json")
 
 
+@cached(cache=LRUCache(maxsize=1), key=lambda settings: hashkey(True))
 def get_data_client_override(
     settings: Annotated[Settings, Depends(get_settings_override)],
 ):
-    return DataClient.model_validate(settings.data_client, from_attributes=True)
+    return DataClient.from_paths(cohort_paths=settings.cohort_paths)
 
 
+@cached(cache=LRUCache(maxsize=1), key=lambda settings: hashkey(True))
 def get_s3_client_override(
     settings: Annotated[Settings, Depends(get_settings_override)],
 ):
-    return S3MockClient()  # type: ignore
+    return S3MockClient(bucket=settings.s3_bucket)
 
 
 app.dependency_overrides[get_settings] = get_settings_override
@@ -46,7 +46,7 @@ def test_get_cohorts():
 
 
 def test_get_fields():
-    response = client.get("/api/fields?cohort=cohort1")
+    response = client.get("/api/fields?cohort_name=cohort1")
     assert response.status_code == 200, response.json()
     assert response.json() == ["feature1", "feature2", "feature3"]
 
@@ -65,7 +65,7 @@ def test_post_igwas(phenotype_definition, cohort):
         "/api/igwas",
         json={
             "phenotype_definition": phenotype_definition,
-            "cohort": cohort,
+            "cohort_name": cohort,
         },
     )
     assert response.status_code == 200, response.json()
@@ -73,7 +73,7 @@ def test_post_igwas(phenotype_definition, cohort):
 
 
 def test_get_fields_invalid_cohort():
-    response = client.get("/api/fields?cohort=invalid_cohort")
+    response = client.get("/api/fields?cohort_name=invalid_cohort")
     assert response.status_code == 404, response.json()
     assert response.json() == {"detail": "Cohort `invalid_cohort` not found"}
 
@@ -90,7 +90,7 @@ def test_post_igwas_invalid_cohort(phenotype_definition):
         "/api/igwas",
         json={
             "phenotype_definition": phenotype_definition,
-            "cohort": "invalid_cohort",
+            "cohort_name": "invalid_cohort",
         },
     )
     assert response.status_code == 404, response.json()
@@ -102,7 +102,7 @@ def test_post_igwas_invalid_phenotype_definition():
         "/api/igwas",
         json={
             "phenotype_definition": "invalid_phenotype_definition",
-            "cohort": "cohort1",
+            "cohort_name": "cohort1",
         },
     )
     assert response.status_code == 400, response.json()
