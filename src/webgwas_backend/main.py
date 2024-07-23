@@ -186,7 +186,7 @@ def handle_igwas(
         output_file_path = f"{request_id}.tsv.zst"
         try:
             s3_client.upload_file(output_file.name, output_file_path)
-        except ClientError as e:
+        except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error uploading file: {e}")
 
     return WebGWASResult(
