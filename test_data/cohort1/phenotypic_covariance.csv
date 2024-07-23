@@ -1,0 +1,4 @@
+feature,feature1,feature2,feature3
+feature1,1.0,0.5,0.5
+feature2,0.5,1.0,0.25
+feature3,0.5,0.25,1.0

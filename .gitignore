@@ -8,4 +8,4 @@ wheels/
 
 # venv
 .venv
-test_data
+test_data/webgwas-results
