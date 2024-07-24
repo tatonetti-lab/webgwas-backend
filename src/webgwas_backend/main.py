@@ -1,5 +1,6 @@
 import functools
 import logging
+import pathlib
 import tempfile
 import uuid
 from typing import Annotated
@@ -151,22 +152,23 @@ def handle_igwas(
     del features_df  # Free up memory
 
     # Indirect GWAS
-    with tempfile.NamedTemporaryFile(suffix=".csv") as beta_file:
+    with tempfile.TemporaryDirectory() as temp_dir:
+        beta_file_path = pathlib.Path(temp_dir).joinpath(f"{request_id}.csv").as_posix()
+        output_file_path = pathlib.Path(temp_dir).joinpath(f"{request_id}.tsv.zst")
+
         (
             beta_series.round(5)
             .rename(request_id)
             .to_frame()
             .rename_axis(index="feature")
-            .to_csv(beta_file)
+            .to_csv(beta_file_path)
         )
-        beta_file.flush()
-        output_file_path = f"{request_id}.tsv.zst"
         try:
             webgwas.igwas.igwas_files(
-                projection_matrix_path=beta_file.name,
+                projection_matrix_path=beta_file_path,
                 covariance_matrix_path=cov_path.as_posix(),
                 gwas_result_paths=[p.as_posix() for p in gwas_paths],
-                output_file_path=output_file_path,
+                output_file_path=output_file_path.as_posix(),
                 num_covar=cohort.num_covar,
                 chunksize=settings.indirect_gwas.chunk_size,
                 variant_id="ID",
@@ -181,14 +183,14 @@ def handle_igwas(
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error in indirect GWAS: {e}")
 
-    # Upload the result to S3
-    try:
-        s3_client.upload_file(output_file_path, output_file_path)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error uploading file: {e}")
+        # Upload the result to S3
+        try:
+            s3_client.upload_file(output_file_path.as_posix(), output_file_path.name)
+        except Exception as e:
+            raise HTTPException(status_code=500, detail=f"Error uploading file: {e}")
 
     try:
-        presigned_url = s3_client.get_presigned_url(output_file_path)
+        presigned_url = s3_client.get_presigned_url(output_file_path.name)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error getting presigned URL: {e}")
 
