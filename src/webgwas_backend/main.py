@@ -23,6 +23,11 @@ from webgwas_backend.worker import Worker
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
+s3 = boto3.client("s3")
+job_queue = Queue()
+queued_request_ids = set()
+results = dict()
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
@@ -43,10 +48,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
-s3 = boto3.client("s3")
-job_queue = Queue()
-queued_request_ids = set()
-results = dict()
 
 
 @functools.lru_cache(maxsize=1)
