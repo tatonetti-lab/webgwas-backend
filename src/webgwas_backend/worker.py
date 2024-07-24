@@ -12,6 +12,7 @@ logger = logging.getLogger(__name__)
 
 def worker_function(
     job_queue: Queue[WebGWASRequestID],
+    queued_request_ids: set[str],
     results: dict[str, WebGWASResult],
     settings: Settings,
     data_client: DataClient,
@@ -19,6 +20,7 @@ def worker_function(
 ):
     while True:
         request = job_queue.get()
+        queued_request_ids.remove(request.request_id)
 
         try:
             result = handle_igwas(
@@ -44,12 +46,14 @@ class Worker:
     def __init__(
         self,
         job_queue: Queue,
+        queued_request_ids: set[str],
         results: dict[str, WebGWASResult],
         settings: Settings,
         data_client: DataClient,
         s3_client: S3Client,
     ):
         self.job_queue = job_queue
+        self.queued_request_ids = queued_request_ids
         self.results = results
         self.settings = settings
         self.data_client = data_client
@@ -58,6 +62,7 @@ class Worker:
     def run(self):
         worker_function(
             self.job_queue,
+            self.queued_request_ids,
             self.results,
             self.settings,
             self.data_client,

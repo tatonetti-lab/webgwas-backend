@@ -30,12 +30,12 @@ async def lifespan(app: FastAPI):
 
     worker = Worker(
         job_queue,
+        queued_request_ids,
         results,
         get_settings(),
         get_data_client(get_settings()),
         get_s3_client(get_settings()),
     )
-
     t = threading.Thread(target=worker.run)
     t.daemon = True
     t.start()
@@ -45,6 +45,7 @@ async def lifespan(app: FastAPI):
 app = FastAPI(lifespan=lifespan)
 s3 = boto3.client("s3")
 job_queue = Queue()
+queued_request_ids = set()
 results = dict()
 
 
@@ -96,23 +97,32 @@ def post_igwas(
         cohort=cohort,
     )
     job_queue.put(new_request)
+    queued_request_ids.add(new_request.request_id)
     return WebGWASResponse(request_id=new_request.request_id, status="queued")
 
 
 @app.get("/api/igwas/status/{request_id}", response_model=WebGWASResponse)
 def get_igwas_status(request_id: str) -> WebGWASResponse:
-    result = results.get(request_id)
-    if result is None:
+    result_exists = request_id in results
+    queued = request_id in queued_request_ids
+    if result_exists:
+        return results[request_id]
+    elif queued:
         return WebGWASResponse(request_id=request_id, status="queued")
     else:
-        return result
+        raise HTTPException(status_code=404, detail="Request not found")
 
 
 @app.get("/api/igwas/results/{request_id}", response_model=WebGWASResult)
 def get_igwas_results(request_id: str) -> WebGWASResult:
     result = results.get(request_id)
-    if result is None:
+    queued = request_id in queued_request_ids
+    if result is None and not queued:
         raise HTTPException(status_code=404, detail="Request not found")
-    elif result.status == "error":
-        raise HTTPException(status_code=500, detail=result.error_msg)
+    elif result is None and queued:
+        raise HTTPException(status_code=202, detail="Request is queued")
+    else:
+        assert result is not None
+        if result.status == "error":
+            raise HTTPException(status_code=500, detail=result.error_msg)
     return result

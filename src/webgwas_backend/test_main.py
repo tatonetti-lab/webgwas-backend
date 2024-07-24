@@ -17,6 +17,7 @@ from webgwas_backend.main import (
     get_s3_client,
     get_settings,
     job_queue,
+    queued_request_ids,
     results,
 )
 from webgwas_backend.models import WebGWASResponse, WebGWASResult
@@ -49,6 +50,7 @@ async def lifespan_override(app: FastAPI):
 
     worker = Worker(
         job_queue,
+        queued_request_ids,
         results,
         get_settings_override(),
         get_data_client_override(get_settings_override()),
