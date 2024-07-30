@@ -42,4 +42,4 @@ class S3MockClient(S3Client):
         bucket_keys[key] = self.data_dir / key
 
     def get_presigned_url(self, key):
-        return f"https://{self.bucket}.s3.amazonaws.com/{key}"
+        return self.files[self.bucket][key].as_posix()
