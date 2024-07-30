@@ -28,7 +28,7 @@ from webgwas_backend.worker import Worker
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-s3 = boto3.client("s3", config=Config(signature_version="v4"))
+s3 = boto3.client("s3", region_name="us-east-2", config=Config(signature_version="v4"))
 job_queue = Queue()
 queued_request_ids = set()
 results = dict()
