@@ -2,6 +2,8 @@ import pathlib
 import tempfile
 from abc import ABC, abstractmethod
 
+from botocore.config import Config
+
 
 class S3Client(ABC):
     @abstractmethod
@@ -26,6 +28,7 @@ class S3ProdClient(S3Client):
             ClientMethod="get_object",
             Params={"Bucket": self.bucket, "Key": key},
             ExpiresIn=60 * 60 * 3,  # 3 hours
+            config=Config(signature_version="v4"),
         )
 
 

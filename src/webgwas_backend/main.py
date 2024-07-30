@@ -21,7 +21,7 @@ from webgwas_backend.models import (
     WebGWASResponse,
     WebGWASResult,
 )
-from webgwas_backend.s3_client import S3MockClient, S3ProdClient
+from webgwas_backend.s3_client import S3ProdClient
 from webgwas_backend.worker import Worker
 
 logger = logging.getLogger(__name__)
@@ -78,7 +78,6 @@ def get_data_client(settings: Annotated[Settings, Depends(get_settings)]):
 
 @cached(cache=LRUCache(maxsize=1), key=lambda settings: hashkey(True))
 def get_s3_client(settings: Annotated[Settings, Depends(get_settings)]):
-    # return S3MockClient(bucket=settings.s3_bucket)
     return S3ProdClient(s3_client=s3, bucket=settings.s3_bucket)
 
 
