@@ -7,6 +7,7 @@ from typing import Annotated
 import boto3
 import webgwas
 import webgwas.parser
+from botocore.config import Config
 from cachetools import LRUCache, cached
 from cachetools.keys import hashkey
 from fastapi import Depends, FastAPI, HTTPException
@@ -27,7 +28,7 @@ from webgwas_backend.worker import Worker
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-s3 = boto3.client("s3")
+s3 = boto3.client("s3", config=Config(signature_version="v4"))
 job_queue = Queue()
 queued_request_ids = set()
 results = dict()
