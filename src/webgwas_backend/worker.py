@@ -1,5 +1,4 @@
 import logging
-import time
 from queue import Queue
 
 from webgwas_backend.config import Settings
@@ -31,7 +30,6 @@ def worker_function(
                 cohort=request.cohort,
                 request_id=request.request_id,
             )
-            time.sleep(10)
             results[request.request_id] = result
         except Exception as e:
             msg = f"{e}"
