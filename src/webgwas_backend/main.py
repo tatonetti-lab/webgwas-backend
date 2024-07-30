@@ -27,7 +27,7 @@ from webgwas_backend.worker import Worker
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
-# s3 = boto3.client("s3")
+s3 = boto3.client("s3")
 job_queue = Queue()
 queued_request_ids = set()
 results = dict()
@@ -78,8 +78,8 @@ def get_data_client(settings: Annotated[Settings, Depends(get_settings)]):
 
 @cached(cache=LRUCache(maxsize=1), key=lambda settings: hashkey(True))
 def get_s3_client(settings: Annotated[Settings, Depends(get_settings)]):
-    return S3MockClient(bucket=settings.s3_bucket)
-    # return S3ProdClient(s3_client=s3, bucket=settings.s3_bucket)
+    # return S3MockClient(bucket=settings.s3_bucket)
+    return S3ProdClient(s3_client=s3, bucket=settings.s3_bucket)
 
 
 def validate_cohort(
