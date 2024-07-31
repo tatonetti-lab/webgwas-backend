@@ -10,6 +10,7 @@
     },
     "cohort_paths": [ 
         "test_data/cohort1",
-        "test_data/cohort2"
+        "test_data/cohort2",
+        "test_data/ukb_wb_100k_reduced_anon"
     ]
 }
