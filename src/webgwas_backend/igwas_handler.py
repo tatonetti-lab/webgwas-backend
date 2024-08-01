@@ -32,6 +32,7 @@ def handle_igwas(
         raise HTTPException(status_code=400, detail=f"Error parsing phenotype: {e}")
 
     # Load data
+    logger.info("Loading data")
     features_df, cov_path, gwas_paths = data_client.get_data_cov_gwas_unchecked(
         cohort.cohort_name
     )
@@ -50,8 +51,9 @@ def handle_igwas(
     del features_df  # Free up memory
 
     # Regress the target phenotype against the feature phenotypes
-    logger.info("Regressing phenotype against features")
+    logger.info("Loading left inverse")
     left_inverse_df = data_client.get_left_inverse(cohort.cohort_name)
+    logger.info("Regressing phenotype against features")
     if left_inverse_df is None:
         raise HTTPException(
             status_code=500,
