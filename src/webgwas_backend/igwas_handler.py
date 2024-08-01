@@ -57,6 +57,7 @@ def handle_igwas(
         )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error in regression: {e}")
+    del left_inverse_df  # Free up memory
 
     # Indirect GWAS
     with tempfile.TemporaryDirectory() as temp_dir:
