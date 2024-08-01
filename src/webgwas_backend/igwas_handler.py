@@ -1,3 +1,4 @@
+import logging
 import pathlib
 import tempfile
 
@@ -12,6 +13,8 @@ from webgwas_backend.data_client import DataClient, GWASCohort
 from webgwas_backend.models import WebGWASResult
 from webgwas_backend.s3_client import S3Client
 
+logger = logging.getLogger(__name__)
+
 
 def handle_igwas(
     settings: Settings,
@@ -22,6 +25,7 @@ def handle_igwas(
     cohort: GWASCohort,
 ) -> WebGWASResult:
     # Parse the phenotype definition
+    logger.info(f"Parsing phenotype definition: {phenotype_definition}")
     try:
         parser = webgwas.parser.RPNParser(phenotype_definition)
     except webgwas.parser.ParserException as e:
@@ -33,6 +37,7 @@ def handle_igwas(
     )
 
     # Assign the target phenotype
+    logger.info("Applying phenotype definition to data")
     try:
         target_phenotype = features_df.apply(
             lambda row: parser.apply_definition(row), axis=1
@@ -45,6 +50,7 @@ def handle_igwas(
     del features_df  # Free up memory
 
     # Regress the target phenotype against the feature phenotypes
+    logger.info("Regressing phenotype against features")
     left_inverse_df = data_client.get_left_inverse(cohort.cohort_name)
     if left_inverse_df is None:
         raise HTTPException(
@@ -60,6 +66,7 @@ def handle_igwas(
     del left_inverse_df  # Free up memory
 
     # Indirect GWAS
+    logger.info("Running indirect GWAS")
     with tempfile.TemporaryDirectory() as temp_dir:
         beta_file_path = pathlib.Path(temp_dir).joinpath(f"{request_id}.csv").as_posix()
         output_file_path = pathlib.Path(temp_dir).joinpath(f"{request_id}.tsv.zst")
@@ -92,11 +99,13 @@ def handle_igwas(
             raise HTTPException(status_code=500, detail=f"Error in indirect GWAS: {e}")
 
         # Upload the result to S3
+        logger.info("Uploading result to S3")
         try:
             s3_client.upload_file(output_file_path.as_posix(), output_file_path.name)
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error uploading file: {e}")
 
+    logger.info("Getting presigned URL")
     try:
         presigned_url = s3_client.get_presigned_url(output_file_path.name)
     except Exception as e:
