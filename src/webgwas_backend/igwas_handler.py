@@ -27,7 +27,7 @@ def handle_igwas(
     except webgwas.parser.ParserException as e:
         raise HTTPException(status_code=400, detail=f"Error parsing phenotype: {e}")
 
-    # Load data, assign the target phenotype
+    # Load data
     features_df, cov_path, gwas_paths = data_client.get_data_cov_gwas_unchecked(
         cohort.cohort_name
     )
@@ -42,14 +42,21 @@ def handle_igwas(
         raise HTTPException(
             status_code=500, detail=f"Error applying phenotype definition: {e}"
         )
+    del features_df  # Free up memory
 
     # Regress the target phenotype against the feature phenotypes
+    left_inverse_df = data_client.get_left_inverse(cohort.cohort_name)
+    if left_inverse_df is None:
+        raise HTTPException(
+            status_code=500,
+            detail="Error getting left inverse. There is an error with the cohort.",
+        )
     try:
-        beta_series = webgwas.regression.regress(target_phenotype, features_df)
+        beta_series = webgwas.regression.regress_left_inverse(
+            target_phenotype, left_inverse_df
+        )
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error in regression: {e}")
-
-    del features_df  # Free up memory
 
     # Indirect GWAS
     with tempfile.TemporaryDirectory() as temp_dir:

@@ -18,6 +18,7 @@ class GWASCohort(BaseModel):
         metadata.json
         phenotypic_covariance.csv
         phenotype_data.csv.zst
+        phenotype_left_inverse.csv.zst
         gwas/
             feature1.tsv.zst
             feature2.tsv.zst
@@ -30,6 +31,12 @@ class GWASCohort(BaseModel):
     The phenotype data matrix is NOT assumed to be the same as the GWAS data
     matrix--it is just assumed to have similar statistical properties and to
     have the same features.
+
+    The phenotype left inverse also does not need to have been computed on the
+    original features, just on the phenotype data matrix above. For reference,
+    given a phenotype matrix `X`, the phenotype left inverse is `inv(X'X)X'`.
+    This matrix should be stored as the transpose of the phenotype left inverse
+    (i.e. store as `(inv(X'X)X')'`).
 
     `metadata.json` file must contain the following fields:
         cohort_name: string with the same name as the directory
@@ -51,6 +58,7 @@ class GWASCohort(BaseModel):
 
     _covariance_filename: ClassVar[str] = "phenotypic_covariance.csv"
     _data_filename: ClassVar[str] = "phenotype_data.csv.zst"
+    _left_inverse_filename: ClassVar[str] = "phenotype_left_inverse.csv.zst"
     _gwas_directory: ClassVar[str] = "gwas"
 
     cohort_name: str
@@ -58,6 +66,7 @@ class GWASCohort(BaseModel):
     root: DirectoryPath
     covariance_path: FilePath
     data_path: FilePath
+    left_inverse_path: FilePath
     gwas_paths: list[FilePath]
     num_covar: int
 
@@ -79,6 +88,7 @@ class GWASCohort(BaseModel):
         metadata["root"] = root
         metadata["covariance_path"] = root.joinpath(cls._covariance_filename)
         metadata["data_path"] = root.joinpath(cls._data_filename)
+        metadata["left_inverse_path"] = root.joinpath(cls._left_inverse_filename)
         metadata["gwas_paths"] = [
             root.joinpath(cls._gwas_directory).joinpath(
                 f"{feature}{metadata['gwas_extension']}"
@@ -100,6 +110,13 @@ class GWASCohort(BaseModel):
                 f"Invalid cohort directory. Data matrix does not "
                 f"contain all features. Expected {metadata['feature_names']}, "
                 f"found {data_df.columns}"
+            )
+        left_inverse_df = pd.read_csv(metadata["left_inverse_path"])
+        if not set(left_inverse_df.columns) == set(metadata["feature_names"]):
+            raise ValueError(
+                f"Invalid cohort directory. Data matrix does not "
+                f"contain all features. Expected {metadata['feature_names']}, "
+                f"found {left_inverse_df.columns}"
             )
         return cls.model_validate(metadata)
 
@@ -131,6 +148,12 @@ class DataClient(BaseModel):
         if cohort_obj is None:
             return None
         return pd.read_csv(cohort_obj.data_path)
+
+    def get_left_inverse(self, cohort: str) -> pd.DataFrame | None:
+        cohort_obj = self.name_to_cohort.get(cohort)
+        if cohort_obj is None:
+            return None
+        return pd.read_csv(cohort_obj.left_inverse_path).T
 
     def get_covariance_path(self, cohort: str) -> Path | None:
         cohort_obj = self.name_to_cohort.get(cohort)
