@@ -76,6 +76,8 @@ pandas==2.2.2
     # via webgwas-backend
 pluggy==1.5.0
     # via pytest
+polars==1.3.0
+    # via webgwas-backend
 psutil==6.0.0
     # via webgwas-backend
 pydantic==2.8.2
