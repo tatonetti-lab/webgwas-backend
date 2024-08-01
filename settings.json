@@ -2,9 +2,9 @@
     "lru_cache_size": 10,
     "s3_bucket": "webgwas-ohio",
     "indirect_gwas": {
-        "num_threads": 2,
-        "chunk_size": 1000,
-        "capacity": 5,
+        "num_threads": 1,
+        "chunk_size": 100,
+        "capacity": 2,
         "compress": true,
         "quiet": false
     },
