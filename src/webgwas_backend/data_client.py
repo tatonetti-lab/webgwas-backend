@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import ClassVar
 
 import pandas as pd
+import polars as pl
 from pydantic import BaseModel, DirectoryPath, FilePath
 
 logger = logging.getLogger("uvicorn")
@@ -150,13 +151,13 @@ class DataClient(BaseModel):
         cohort_obj = self.name_to_cohort.get(cohort)
         if cohort_obj is None:
             return None
-        return pd.read_csv(cohort_obj.data_path)
+        return pl.read_csv(cohort_obj.data_path).to_pandas()
 
     def get_left_inverse(self, cohort: str) -> pd.DataFrame | None:
         cohort_obj = self.name_to_cohort.get(cohort)
         if cohort_obj is None:
             return None
-        return pd.read_csv(cohort_obj.left_inverse_path).T
+        return pl.read_csv(cohort_obj.left_inverse_path).to_pandas().T
 
     def get_covariance_path(self, cohort: str) -> Path | None:
         cohort_obj = self.name_to_cohort.get(cohort)
@@ -175,7 +176,7 @@ class DataClient(BaseModel):
     ) -> tuple[pd.DataFrame, Path, list[Path]]:
         cohort_obj = self.name_to_cohort[cohort]
         return (
-            pd.read_csv(cohort_obj.data_path),
+            pl.read_csv(cohort_obj.data_path).to_pandas(),
             cohort_obj.covariance_path,
             cohort_obj.gwas_paths,
         )
