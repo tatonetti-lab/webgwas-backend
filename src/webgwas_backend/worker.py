@@ -7,7 +7,7 @@ from webgwas_backend.igwas_handler import handle_igwas
 from webgwas_backend.models import WebGWASRequestID, WebGWASResult
 from webgwas_backend.s3_client import S3Client
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("uvicorn")
 
 
 def worker_function(

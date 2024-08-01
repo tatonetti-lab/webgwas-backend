@@ -25,8 +25,7 @@ from webgwas_backend.models import (
 from webgwas_backend.s3_client import S3ProdClient
 from webgwas_backend.worker import Worker
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger = logging.getLogger("uvicorn")
 
 s3 = boto3.client("s3", region_name="us-east-2", config=Config(signature_version="v4"))
 job_queue = Queue()

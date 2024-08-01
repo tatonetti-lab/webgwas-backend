@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import ClassVar
 
 import pandas as pd
 from pydantic import BaseModel, DirectoryPath, FilePath
+
+logger = logging.getLogger("uvicorn")
 
 
 class GWASCohort(BaseModel):
@@ -96,22 +99,22 @@ class GWASCohort(BaseModel):
             for feature in metadata["feature_names"]
         ]
         cov_df = pd.read_csv(metadata["covariance_path"], index_col=0)
-        if set(cov_df.columns) != set(metadata["feature_names"]) or set(
-            cov_df.index
+        if set(cov_df.columns.tolist()) != set(metadata["feature_names"]) or set(
+            cov_df.index.tolist()
         ) != set(metadata["feature_names"]):
             raise ValueError(
                 f"Invalid cohort directory. Covariance matrix does not "
                 f"contain all features. Expected {metadata['feature_names']}, "
-                f"found {cov_df.columns}"
+                f"found {cov_df.columns} and {cov_df.index}"
             )
-        data_df = pd.read_csv(metadata["data_path"])
+        data_df = pd.read_csv(metadata["data_path"], nrows=0)
         if not set(data_df.columns) == set(metadata["feature_names"]):
             raise ValueError(
                 f"Invalid cohort directory. Data matrix does not "
                 f"contain all features. Expected {metadata['feature_names']}, "
                 f"found {data_df.columns}"
             )
-        left_inverse_df = pd.read_csv(metadata["left_inverse_path"])
+        left_inverse_df = pd.read_csv(metadata["left_inverse_path"], nrows=0)
         if not set(left_inverse_df.columns) == set(metadata["feature_names"]):
             raise ValueError(
                 f"Invalid cohort directory. Data matrix does not "

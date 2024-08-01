@@ -13,7 +13,7 @@ from webgwas_backend.data_client import DataClient, GWASCohort
 from webgwas_backend.models import WebGWASResult
 from webgwas_backend.s3_client import S3Client
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("uvicorn")
 
 
 def handle_igwas(
