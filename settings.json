@@ -3,8 +3,8 @@
     "s3_bucket": "webgwas-ohio",
     "indirect_gwas": {
         "num_threads": 1,
-        "chunk_size": 100,
-        "capacity": 2,
+        "chunk_size": 10,
+        "capacity": 1,
         "compress": true,
         "quiet": false
     },
