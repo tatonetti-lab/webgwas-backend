@@ -66,6 +66,7 @@ mdurl==0.1.2
     # via markdown-it-py
 numpy==2.0.1
     # via pandas
+    # via pyarrow
     # via webgwas
 orjson==3.10.6
     # via fastapi
@@ -79,6 +80,8 @@ pluggy==1.5.0
 polars==1.3.0
     # via webgwas-backend
 psutil==6.0.0
+    # via webgwas-backend
+pyarrow==17.0.0
     # via webgwas-backend
 pydantic==2.8.2
     # via fastapi
