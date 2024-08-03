@@ -108,8 +108,8 @@ def get_nodes(cohort: Annotated[GWASCohort, Depends(validate_cohort)]):
             id=i + len(feature_nodes) + 1,
             type="operator",
             name=name,
-            min_arity=2,
-            max_arity=None,
+            min_arity={"NOT": 1}.get(name, 2),
+            max_arity={"NOT": 1}.get(name, 2),
         )
         for i, name in enumerate(webgwas.parser.OperatorNode)
     ]
