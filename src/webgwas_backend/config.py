@@ -4,6 +4,7 @@ import json
 from typing import Any
 
 import psutil
+from dynaconf import Dynaconf
 from pydantic import BaseModel, DirectoryPath, Field
 from pydantic_settings import BaseSettings
 
@@ -30,3 +31,11 @@ class Settings(BaseSettings):
     def from_json_file(cls, json_file: str) -> Settings:
         with open(json_file) as f:
             return cls.from_json(json.load(f))
+
+    @classmethod
+    def from_dynaconf(cls) -> Settings:
+        dynaconf_settings = Dynaconf(settings_files=["settings.toml", ".secrets.toml"])
+        return cls.model_validate(dynaconf_settings)
+
+
+settings = Settings.from_dynaconf()
