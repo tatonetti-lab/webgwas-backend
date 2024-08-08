@@ -1,26 +1,33 @@
 import uuid
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from sqlmodel import Field, Relationship, SQLModel, UniqueConstraint
+from webgwas.phenotype_definitions import NodeType
 
-from webgwas_backend.data_client import GWASCohort
+
+class Cohort(SQLModel, table=True):
+    id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(unique=True)
+    root_directory: str = Field(unique=True)
+
+    features: list["Feature"] = Relationship(back_populates="cohort")
 
 
-class PhenotypeNode(BaseModel):
-    """A node in the phenotype definition tree"""
-
-    id: int = Field(..., description="Unique identifier for the node")
-    type: Literal["field", "operator", "constant"]
-    name: str = Field(..., description="Name of the node")
-    min_arity: int | None = Field(
-        0, serialization_alias="minArity", description="Minimum number of operands"
+class Feature(SQLModel, table=True):
+    __table_args__ = (
+        UniqueConstraint("cohort_id", "code", "name", name="unique_feature"),
     )
-    max_arity: int | None = Field(
-        0, serialization_alias="maxArity", description="Maximum number of operands"
-    )
+
+    id: int | None = Field(default=None, primary_key=True)
+    code: str
+    name: str
+    type: NodeType
+
+    cohort_id: int | None = Field(default=None, foreign_key="cohort.id")
+    cohort: Cohort | None = Relationship(back_populates="features")
 
 
-class WebGWASRequest(BaseModel):
+class WebGWASRequest(SQLModel):
     """Request for GWAS summary statistics"""
 
     phenotype_definition: str = Field(
@@ -39,15 +46,15 @@ class WebGWASRequest(BaseModel):
     )
 
 
-class WebGWASRequestID(BaseModel):
+class WebGWASRequestID(SQLModel):
     """Internal use only"""
 
     request_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     phenotype_definition: str
-    cohort: GWASCohort
+    cohort: Cohort
 
 
-class WebGWASResponse(BaseModel):
+class WebGWASResponse(SQLModel):
     """Response to a request for GWAS summary statistics"""
 
     request_id: str = Field(..., description="Unique identifier for the request.")
@@ -56,7 +63,7 @@ class WebGWASResponse(BaseModel):
     )
 
 
-class WebGWASResult(BaseModel):
+class WebGWASResult(SQLModel):
     """Result of a successful GWAS"""
 
     request_id: str = Field(..., description="Unique identifier for the request.")
