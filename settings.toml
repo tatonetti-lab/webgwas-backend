@@ -1,9 +1,9 @@
-lru_cache_size = 10
 s3_bucket = "webgwas-ohio"
+sqlite_db = "sqlite:///backend.db"
 cohort_paths = [
-  "test_data/cohort1"
-  "test_data/cohort2"
-  "test_data/ukb_wb_100k_reduced_anon"
+  "test_data/cohort1",
+  "test_data/cohort2",
+  "test_data/ukb_wb_100k_reduced_anon",
 ]
 
 [indirect_gwas]
