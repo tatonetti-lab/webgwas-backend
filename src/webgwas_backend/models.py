@@ -1,6 +1,7 @@
 import uuid
 from typing import Literal
 
+from pydantic import DirectoryPath
 from sqlmodel import Field, Relationship, SQLModel, UniqueConstraint
 from webgwas.phenotype_definitions import NodeType
 
@@ -8,7 +9,7 @@ from webgwas.phenotype_definitions import NodeType
 class Cohort(SQLModel, table=True):
     id: int | None = Field(default=None, primary_key=True)
     name: str = Field(unique=True)
-    root_directory: str = Field(unique=True)
+    root_directory: DirectoryPath = Field(unique=True)
 
     features: list["Feature"] = Relationship(back_populates="cohort")
 
