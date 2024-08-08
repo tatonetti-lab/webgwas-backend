@@ -1,50 +1,46 @@
-import functools
 import logging
+import threading
 from contextlib import asynccontextmanager
 from queue import Queue
-from typing import Annotated
 
-import boto3
-import webgwas
-import webgwas.parser
-from botocore.config import Config
-from cachetools import LRUCache, cached
-from cachetools.keys import hashkey
+import webgwas.phenotype_definitions
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from sqlmodel import Session, select
+from webgwas.phenotype_definitions import Field, KnowledgeBase
 
-from webgwas_backend.config import Settings
-from webgwas_backend.data_client import DataClient, GWASCohort
+from webgwas_backend.config import settings
+from webgwas_backend.database import engine, init_db
 from webgwas_backend.models import (
-    PhenotypeNode,
-    WebGWASRequest,
+    Cohort,
+    CohortResponse,
+    FeatureResponse,
+    ValidPhenotype,
+    ValidPhenotypeResponse,
     WebGWASRequestID,
     WebGWASResponse,
     WebGWASResult,
 )
-from webgwas_backend.s3_client import S3ProdClient
+from webgwas_backend.s3_client import get_s3_client
 from webgwas_backend.worker import Worker
 
 logger = logging.getLogger("uvicorn")
+init_db()
+s3 = get_s3_client(settings.dry_run, settings.s3_bucket)
 
-s3 = boto3.client("s3", region_name="us-east-2", config=Config(signature_version="v4"))
 job_queue = Queue()
 queued_request_ids = set()
 results = dict()
 
 
+def get_session():
+    with Session(engine) as session:
+        yield session
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    import threading
-
-    worker = Worker(
-        job_queue,
-        queued_request_ids,
-        results,
-        get_settings(),
-        get_data_client(get_settings()),
-        get_s3_client(get_settings()),
-    )
+    worker = Worker(job_queue, queued_request_ids, results, s3)
     t = threading.Thread(target=worker.run)
     t.daemon = True
     t.start()
@@ -52,7 +48,6 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(lifespan=lifespan)
-
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -62,78 +57,62 @@ app.add_middleware(
 )
 
 
-@functools.lru_cache(maxsize=1)
-def get_settings():
-    return Settings.from_json_file("settings.json")
-
-
-@cached(cache=LRUCache(maxsize=1), key=lambda settings: hashkey(True))
-def get_data_client(settings: Annotated[Settings, Depends(get_settings)]):
-    return DataClient.from_paths(settings.cohort_paths)
-
-
-@cached(cache=LRUCache(maxsize=1), key=lambda settings: hashkey(True))
-def get_s3_client(settings: Annotated[Settings, Depends(get_settings)]):
-    return S3ProdClient(s3_client=s3, bucket=settings.s3_bucket)
-
-
 def validate_cohort(
-    data_client: Annotated[DataClient, Depends(get_data_client)], cohort_name: str
-) -> GWASCohort:
+    *, session: Session = Depends(get_session), cohort_id: int
+) -> Cohort:
+    cohort = session.get(Cohort, cohort_id)
+    if cohort is None:
+        raise HTTPException(status_code=404, detail=f"Cohort `{cohort_id}` not found")
+    return cohort
+
+
+@app.get("/api/cohorts", response_model=list[CohortResponse])
+def get_cohorts(session: Session = Depends(get_session)):
+    return session.exec(select(Cohort)).all()
+
+
+@app.get("/api/features", response_model=list[FeatureResponse])
+def get_nodes(cohort: Cohort = Depends(validate_cohort)):
+    return cohort.features
+
+
+@app.put("/api/phenotype", response_model=ValidPhenotypeResponse)
+def validate_phenotype(
+    *,
+    cohort: Cohort = Depends(validate_cohort),
+    phenotype_definition: str,
+):
     try:
-        result = data_client.validate_cohort(cohort_name)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Error validating cohort: {e}")
-    if result is None:
-        raise HTTPException(status_code=404, detail=f"Cohort `{cohort_name}` not found")
-    return result
-
-
-@app.get("/api/cohorts", response_model=list[str])
-def get_cohorts(data_client: Annotated[DataClient, Depends(get_data_client)]):
-    return data_client.get_cohorts()
-
-
-@app.get("/api/nodes", response_model=list[PhenotypeNode])
-def get_nodes(cohort: Annotated[GWASCohort, Depends(validate_cohort)]):
-    root_node = PhenotypeNode(
-        id=0, type="operator", name="Root", min_arity=1, max_arity=1
-    )
-    feature_nodes = [
-        PhenotypeNode(id=i + 1, type="field", name=feature, min_arity=0, max_arity=0)
-        for i, feature in enumerate(cohort.feature_names)
-    ]
-    operator_nodes = [
-        PhenotypeNode(
-            id=i + len(feature_nodes) + 1,
-            type="operator",
-            name=name,
-            min_arity={"NOT": 1}.get(name, 2),
-            max_arity={"NOT": 1}.get(name, 2),
+        nodes = webgwas.phenotype_definitions.parse_string_definition(
+            phenotype_definition
         )
-        for i, name in enumerate(webgwas.parser.OperatorNode)
-    ]
-    return [root_node] + feature_nodes + operator_nodes
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error parsing phenotype: {e}")
 
-
-@app.get("/api/fields", response_model=list[str])
-def get_fields(cohort: Annotated[GWASCohort, Depends(validate_cohort)]):
-    return cohort.feature_names
+    try:
+        fields = [
+            Field.model_validate(f, from_attributes=True) for f in cohort.features
+        ]
+        knowledge_base = KnowledgeBase.default(fields)
+        nodes = webgwas.phenotype_definitions.validate_nodes(nodes, knowledge_base)
+        webgwas.phenotype_definitions.type_check_nodes(nodes)
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Error validating phenotype: {e}")
+    return ValidPhenotype(phenotype_definition=phenotype_definition, valid_nodes=nodes)
 
 
 @app.post("/api/igwas", response_model=WebGWASResponse)
 def post_igwas(
-    data_client: Annotated[DataClient, Depends(get_data_client)],
-    request: WebGWASRequest,
+    cohort: Cohort = Depends(validate_cohort),
+    phenotype_definition: ValidPhenotype = Depends(validate_phenotype),
 ) -> WebGWASResponse:
-    cohort = validate_cohort(data_client=data_client, cohort_name=request.cohort_name)
     new_request = WebGWASRequestID(
-        phenotype_definition=request.phenotype_definition,
         cohort=cohort,
+        phenotype_definition=phenotype_definition,
     )
     job_queue.put(new_request)
-    queued_request_ids.add(new_request.request_id)
-    return WebGWASResponse(request_id=new_request.request_id, status="queued")
+    queued_request_ids.add(new_request.id)
+    return WebGWASResponse(request_id=new_request.id, status="queued")
 
 
 @app.get("/api/igwas/status/{request_id}", response_model=WebGWASResponse)

@@ -2,6 +2,9 @@ import pathlib
 import tempfile
 from abc import ABC, abstractmethod
 
+import boto3
+from botocore.config import Config
+
 
 class S3Client(ABC):
     @abstractmethod
@@ -43,3 +46,14 @@ class S3MockClient(S3Client):
 
     def get_presigned_url(self, key):
         return self.files[self.bucket][key].as_posix()
+
+
+def get_s3_client(dry_run: bool, bucket: str):
+    if dry_run:
+        return S3MockClient(bucket=bucket)
+    return S3ProdClient(
+        s3_client=boto3.client(
+            "s3", region_name="us-east-2", config=Config(signature_version="v4")
+        ),
+        bucket=bucket,
+    )

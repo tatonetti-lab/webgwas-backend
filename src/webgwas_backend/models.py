@@ -1,31 +1,55 @@
+import json
 import uuid
+from pathlib import Path
 from typing import Literal
 
 from pydantic import DirectoryPath
 from sqlmodel import Field, Relationship, SQLModel, UniqueConstraint
-from webgwas.phenotype_definitions import NodeType
+from webgwas.phenotype_definitions import Node, NodeType
 
 
-class Cohort(SQLModel, table=True):
+class CohortResponse(SQLModel):
     id: int | None = Field(default=None, primary_key=True)
     name: str = Field(unique=True)
-    root_directory: DirectoryPath = Field(unique=True)
 
+
+class Cohort(CohortResponse, SQLModel, table=True):
+    root_directory: DirectoryPath = Field(unique=True)
     features: list["Feature"] = Relationship(back_populates="cohort")
 
+    def get_gwas_paths(self) -> list[Path]:
+        return [
+            Path(self.root_directory).joinpath(f"{feature.code}.tsv.zst")
+            for feature in self.features
+        ]
 
-class Feature(SQLModel, table=True):
-    __table_args__ = (
-        UniqueConstraint("cohort_id", "code", "name", name="unique_feature"),
-    )
+    def get_num_covar(self) -> int:
+        with open(Path(self.root_directory).joinpath("metadata.json")) as f:
+            metadata = json.load(f)
+        return metadata["num_covar"]
 
+
+class FeatureResponse(SQLModel):
     id: int | None = Field(default=None, primary_key=True)
     code: str
     name: str
     type: NodeType
 
+
+class Feature(FeatureResponse, SQLModel, table=True):
+    __table_args__ = (
+        UniqueConstraint("cohort_id", "code", "name", name="unique_feature"),
+    )
     cohort_id: int | None = Field(default=None, foreign_key="cohort.id")
     cohort: Cohort | None = Relationship(back_populates="features")
+
+
+class ValidPhenotypeResponse(SQLModel):
+    phenotype_definition: str
+
+
+class ValidPhenotype(ValidPhenotypeResponse, SQLModel):
+    valid_nodes: list[Node]
 
 
 class WebGWASRequest(SQLModel):
@@ -50,8 +74,8 @@ class WebGWASRequest(SQLModel):
 class WebGWASRequestID(SQLModel):
     """Internal use only"""
 
-    request_id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    phenotype_definition: str
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
+    phenotype_definition: ValidPhenotype
     cohort: Cohort
 
 
