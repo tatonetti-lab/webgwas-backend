@@ -18,6 +18,7 @@ class IndirectGWASSettings(BaseModel):
 
 
 class Settings(BaseSettings):
+    dry_run: bool
     s3_bucket: str
     sqlite_db: str
     cohort_paths: list[DirectoryPath]
