@@ -18,10 +18,10 @@ class IndirectGWASSettings(BaseModel):
 
 
 class Settings(BaseSettings):
-    lru_cache_size: int = 100
-    s3_bucket: str = "webgwas"
-    indirect_gwas: IndirectGWASSettings
+    s3_bucket: str
+    sqlite_db: str
     cohort_paths: list[DirectoryPath]
+    indirect_gwas: IndirectGWASSettings
 
     @classmethod
     def from_json(cls, json_data: dict[str, Any]) -> Settings:
@@ -35,7 +35,7 @@ class Settings(BaseSettings):
     @classmethod
     def from_dynaconf(cls) -> Settings:
         dynaconf_settings = Dynaconf(settings_files=["settings.toml", ".secrets.toml"])
-        return cls.model_validate(dynaconf_settings)
+        return cls.model_validate(dynaconf_settings, from_attributes=True)
 
 
 settings = Settings.from_dynaconf()
