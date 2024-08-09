@@ -14,3 +14,4 @@ test_data/
 
 # Ignore dynaconf secret files
 .secrets.*
+backend.db
