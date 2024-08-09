@@ -107,6 +107,7 @@ pyyaml==6.0.1
     # via uvicorn
 rich==13.7.1
     # via typer
+    # via webgwas-backend
 s3transfer==0.10.2
     # via boto3
 shellingham==1.5.4
@@ -124,6 +125,7 @@ starlette==0.37.2
     # via fastapi
 typer==0.12.3
     # via fastapi-cli
+    # via webgwas-backend
 typing-extensions==4.12.2
     # via fastapi
     # via pydantic
