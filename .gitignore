@@ -10,6 +10,7 @@ wheels/
 .venv
 test_data/webgwas-results
 test_data/ukb_wb_100k_reduced_anon
+test_data/
 
 # Ignore dynaconf secret files
 .secrets.*
