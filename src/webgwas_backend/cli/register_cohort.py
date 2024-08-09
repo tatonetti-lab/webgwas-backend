@@ -121,6 +121,7 @@ class CohortFiles:
     def process_phenotypes_covariates(
         self,
         k_anonymity: int = 10,
+        keep_n_samples: int | None = None,
     ) -> None:
         if self.inputs.phenotype_path is None:
             raise ValueError("No phenotype file specified")
@@ -149,7 +150,9 @@ class CohortFiles:
         del covariance_matrix  # Free up memory
         if k_anonymity > 0:
             logger.info("Anonymizing phenotypes")
-            anon_array = webgwas.mdav.mdav(Y.values[:10000], k_anonymity)
+            if keep_n_samples is not None:
+                Y = Y.iloc[:keep_n_samples]
+            anon_array = webgwas.mdav.mdav(Y.values, k_anonymity)
             anon_df = pd.DataFrame(anon_array, columns=Y.columns)
             del anon_array, Y  # Free up memory
             logger.info("Writing anonymized phenotypes")
@@ -319,6 +322,7 @@ def register_cohort(
     sample_size: str = "OBS_CT",
     gwas_separator: str = "\t",
     keep_n_variants: Optional[int] = None,
+    keep_n_samples: Optional[int] = None,
 ) -> None:
     if cohort_already_exists(cohort_name):
         raise ValueError(f"Cohort {cohort_name} already exists")
@@ -341,7 +345,9 @@ def register_cohort(
     logger.info("Registering feature map")
     cohort.register_feature_map_file(feature_map_path, phenotype_file_separator)
     logger.info("Processing phenotypes and covariates")
-    cohort.process_phenotypes_covariates(k_anonymity=k_anonymity)
+    cohort.process_phenotypes_covariates(
+        k_anonymity=k_anonymity, keep_n_samples=keep_n_samples
+    )
     logger.info("Processing GWAS files")
     cohort.process_gwas(
         variant_id=variant_id,
