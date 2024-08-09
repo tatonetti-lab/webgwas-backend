@@ -1,9 +1,7 @@
-import json
 import uuid
 from pathlib import Path
 from typing import Literal
 
-from pydantic import DirectoryPath
 from sqlmodel import Field, Relationship, SQLModel, UniqueConstraint
 from webgwas.phenotype_definitions import Node, NodeType
 
@@ -14,19 +12,17 @@ class CohortResponse(SQLModel):
 
 
 class Cohort(CohortResponse, SQLModel, table=True):
-    root_directory: DirectoryPath = Field(unique=True)
+    root_directory: str = Field(unique=True)
     features: list["Feature"] = Relationship(back_populates="cohort")
+    num_covar: int
 
     def get_gwas_paths(self) -> list[Path]:
         return [
-            Path(self.root_directory).joinpath(f"{feature.code}.tsv.zst")
+            Path(self.root_directory)
+            .joinpath("gwas")
+            .joinpath(f"{feature.code}.tsv.zst")
             for feature in self.features
         ]
-
-    def get_num_covar(self) -> int:
-        with open(Path(self.root_directory).joinpath("metadata.json")) as f:
-            metadata = json.load(f)
-        return metadata["num_covar"]
 
 
 class FeatureResponse(SQLModel):
