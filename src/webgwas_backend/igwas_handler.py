@@ -10,7 +10,7 @@ import webgwas.regression
 from fastapi import HTTPException
 from pandas import Series
 
-from webgwas_backend.config import settings
+from webgwas_backend.config import Settings
 from webgwas_backend.models import WebGWASRequestID, WebGWASResult
 from webgwas_backend.s3_client import S3Client
 
@@ -49,16 +49,15 @@ def get_igwas_coef(request: WebGWASRequestID) -> Series:
     return beta_series.round(5).rename(request.id).rename_axis(index="feature")
 
 
-def handle_igwas(request: WebGWASRequestID, s3_client: S3Client) -> WebGWASResult:
+def handle_igwas(
+    request: WebGWASRequestID, s3_client: S3Client, settings: Settings
+) -> WebGWASResult:
     beta_series = get_igwas_coef(request)
     with tempfile.TemporaryDirectory() as temp_dir:
         logger.info("Writing beta file")
         beta_file_path = pathlib.Path(temp_dir).joinpath(f"{request.id}.csv").as_posix()
         beta_series.to_frame().to_csv(beta_file_path)
         logger.debug(f"Beta file written to {beta_file_path}")
-        import time
-
-        time.sleep(30)
         logger.info("Running Indirect GWAS")
         output_file_path = pathlib.Path(temp_dir).joinpath(f"{request.id}.tsv.zst")
         cov_path = (

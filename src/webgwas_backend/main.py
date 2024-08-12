@@ -25,6 +25,7 @@ from webgwas_backend.s3_client import get_s3_client
 from webgwas_backend.worker import Worker
 
 logger = logging.getLogger("uvicorn")
+logger.setLevel(logging.INFO)
 init_db()
 s3 = get_s3_client(settings.dry_run, settings.s3_bucket)
 
@@ -40,7 +41,7 @@ def get_session():
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    worker = Worker(job_queue, queued_request_ids, results, s3)
+    worker = Worker(job_queue, queued_request_ids, results, s3, settings)
     t = threading.Thread(target=worker.run)
     t.daemon = True
     t.start()
