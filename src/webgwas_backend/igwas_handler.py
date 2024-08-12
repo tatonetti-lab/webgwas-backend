@@ -2,6 +2,7 @@ import logging
 import pathlib
 import tempfile
 
+import pandas as pd
 import polars as pl
 import webgwas.igwas
 import webgwas.phenotype_definitions
@@ -31,11 +32,13 @@ def get_igwas_coef(request: WebGWASRequestID) -> Series:
     )
     assert isinstance(target_phenotype, Series)
     del features_df  # Free up memory
+    logger.debug(f"Target phenotype: {target_phenotype}")
 
     # Load left inverse
     logger.info("Loading left inverse")
     left_inverse_path = directory.joinpath("phenotype_left_inverse.parquet")
-    left_inverse_df = pl.read_parquet(left_inverse_path).to_pandas().T
+    left_inverse_df = pd.read_parquet(left_inverse_path).T
+    logger.debug(f"Left inverse: {left_inverse_df}")
 
     # Regress the target phenotype against the feature phenotypes
     logger.info("Regressing phenotype against features")
@@ -52,6 +55,10 @@ def handle_igwas(request: WebGWASRequestID, s3_client: S3Client) -> WebGWASResul
         logger.info("Writing beta file")
         beta_file_path = pathlib.Path(temp_dir).joinpath(f"{request.id}.csv").as_posix()
         beta_series.to_frame().to_csv(beta_file_path)
+        logger.debug(f"Beta file written to {beta_file_path}")
+        import time
+
+        time.sleep(30)
         logger.info("Running Indirect GWAS")
         output_file_path = pathlib.Path(temp_dir).joinpath(f"{request.id}.tsv.zst")
         cov_path = (
@@ -66,7 +73,7 @@ def handle_igwas(request: WebGWASRequestID, s3_client: S3Client) -> WebGWASResul
                 covariance_matrix_path=cov_path,
                 gwas_result_paths=gwas_paths,
                 output_file_path=output_file_path.as_posix(),
-                num_covar=request.cohort.get_num_covar(),
+                num_covar=request.cohort.num_covar,
                 chunksize=settings.indirect_gwas.chunk_size,
                 variant_id="ID",
                 beta="BETA",
@@ -86,4 +93,5 @@ def handle_igwas(request: WebGWASRequestID, s3_client: S3Client) -> WebGWASResul
 
     logger.info("Getting presigned URL")
     presigned_url = s3_client.get_presigned_url(output_file_path.name)
+    logger.debug(f"Presigned URL: {presigned_url}")
     return WebGWASResult(request_id=request.id, url=presigned_url, status="done")
