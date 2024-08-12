@@ -5,7 +5,7 @@ from typing import Any
 
 import psutil
 from dynaconf import Dynaconf
-from pydantic import BaseModel, DirectoryPath, Field
+from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
 
 
@@ -21,7 +21,6 @@ class Settings(BaseSettings):
     dry_run: bool
     s3_bucket: str
     sqlite_db: str
-    cohort_paths: list[DirectoryPath]
     indirect_gwas: IndirectGWASSettings
 
     @classmethod
