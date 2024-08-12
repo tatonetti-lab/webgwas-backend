@@ -17,6 +17,7 @@ from webgwas_backend.database import db_exists, engine, init_db
 from webgwas_backend.models import Cohort, Feature
 
 logger = logging.getLogger(__name__)
+logger.setLevel(logging.DEBUG)
 
 
 class InputFiles(BaseModel):
@@ -122,6 +123,7 @@ class CohortFiles:
         self,
         k_anonymity: int = 10,
         keep_n_samples: int | None = None,
+        mean_center: bool = True,
     ) -> None:
         if self.inputs.phenotype_path is None:
             raise ValueError("No phenotype file specified")
@@ -156,13 +158,22 @@ class CohortFiles:
             anon_df = pd.DataFrame(anon_array, columns=Y.columns)
             del anon_array, Y  # Free up memory
             logger.info("Writing anonymized phenotypes")
+            logger.debug(f"Anonymized phenotypes: {anon_df}")
+            if mean_center:
+                anon_df = anon_df - anon_df.mean(axis=0)
+            logger.debug(f"Anonymized phenotypes: {anon_df}")
             anon_df.to_parquet(self.phenotype_path)
             Y = anon_df
         else:
             logger.info("Writing phenotypes")
+            if mean_center:
+                Y = Y - Y.mean(axis=0)
+            logger.debug(f"Phenotypes: {Y}")
             Y.to_parquet(self.phenotype_path)
         logger.info("Computing left inverse")
+        logger.debug(f"Phenotypes: {Y}")
         left_inverse = webgwas.regression.compute_left_inverse(Y)
+        logger.debug(f"Left inverse: {left_inverse}")
         del Y  # Free up memory
         logger.info("Writing left inverse")
         left_inverse.T.to_parquet(self.left_inverse_path)
@@ -202,7 +213,13 @@ class CohortFiles:
                 separator=separator,
                 schema_overrides=schema_overrides,
                 n_rows=keep_n_variants,
-            ).write_csv(output_path, separator="\t")
+            ).select(
+                variant_id,
+                beta,
+                std_error,
+                sample_size,
+            ).to_pandas().to_csv(output_path, sep="\t", index=False)
+            # .write_csv(output_path, separator="\t")
         self.steps_completed.gwas = True
 
     def register_feature_map(self, feature_code_to_info: dict[str, Field]) -> None:
@@ -281,7 +298,7 @@ class CohortFiles:
         covariance_df = pd.read_csv(self.covariance_path, index_col=0)
         assert set(covariance_df.columns) == set(feature_codes)
         assert set(covariance_df.index) == set(feature_codes)
-        left_inverse_df = pl.read_parquet(self.left_inverse_path, n_rows=1).to_pandas()
+        left_inverse_df = pd.read_parquet(self.left_inverse_path)
         left_inverse_features = set(left_inverse_df.columns)
         assert left_inverse_features == set(feature_codes)
 
@@ -323,6 +340,7 @@ def register_cohort(
     gwas_separator: str = "\t",
     keep_n_variants: Optional[int] = None,
     keep_n_samples: Optional[int] = None,
+    mean_center: bool = True,
 ) -> None:
     if cohort_already_exists(cohort_name):
         raise ValueError(f"Cohort {cohort_name} already exists")
@@ -346,7 +364,7 @@ def register_cohort(
     cohort.register_feature_map_file(feature_map_path, phenotype_file_separator)
     logger.info("Processing phenotypes and covariates")
     cohort.process_phenotypes_covariates(
-        k_anonymity=k_anonymity, keep_n_samples=keep_n_samples
+        k_anonymity=k_anonymity, keep_n_samples=keep_n_samples, mean_center=mean_center
     )
     logger.info("Processing GWAS files")
     cohort.process_gwas(
