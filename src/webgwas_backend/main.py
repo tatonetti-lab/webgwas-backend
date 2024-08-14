@@ -82,7 +82,7 @@ def validate_phenotype(
     *,
     cohort: Cohort = Depends(validate_cohort),
     phenotype_definition: str,
-):
+) -> ValidPhenotype:
     try:
         nodes = webgwas.phenotype_definitions.parse_string_definition(
             phenotype_definition
