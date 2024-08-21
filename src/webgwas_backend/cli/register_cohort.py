@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from rich.logging import RichHandler
 from rich.progress import track
 from sqlmodel import Session, select
+from webgwas.igwas import estimate_genotype_variance
 from webgwas.phenotype_definitions import Field
 
 from webgwas_backend.database import db_exists, engine, init_db
@@ -27,7 +28,7 @@ class InputFiles(BaseModel):
     covariate_path: pathlib.Path | None = None
     covariate_file_separator: str = "\t"
     covariate_person_id_col: str = "eid"
-    gwas_paths: list[pathlib.Path] | None = None
+    feature_to_gwas_path: dict[str, pathlib.Path] | None = None
     gwas_file_extension: str = ".tsv.zst"
 
 
@@ -45,7 +46,7 @@ class CohortFiles:
         self.name = name
         self.root = root
         self.root.mkdir(parents=True, exist_ok=True)
-        self.gwas_root = root.joinpath("gwas")
+        self.gwas_path = root.joinpath("gwas.parquet")
         self.phenotype_path = root.joinpath("phenotype_data.parquet")
         self.left_inverse_path = root.joinpath("phenotype_left_inverse.parquet")
         self.covariance_path = root.joinpath("phenotypic_covariance.csv")
@@ -77,9 +78,9 @@ class CohortFiles:
         )
         logger.info(f"Found {len(feature_names)} features in phenotype file")
         if self.features is None:
-            self.features = list(feature_names)
+            self.features = sorted(feature_names)
         else:
-            self.features = list(set(self.features).intersection(feature_names))
+            self.features = sorted(set(self.features).intersection(feature_names))
             if len(self.features) == 0:
                 raise ValueError(f"No features found: {self.features[:3]}")
         logger.info(f"Result in {len(self.features)} features")
@@ -95,29 +96,21 @@ class CohortFiles:
         original_gwas_root: pathlib.Path,
         extension: str = ".tsv.zst",
     ) -> None:
+        self.inputs.gwas_file_extension = extension
         gwas_paths = sorted(original_gwas_root.glob(f"*{extension}"))
         logger.info(f"Found {len(gwas_paths)} GWAS files")
-        gwas_features = [p.name.replace(extension, "") for p in gwas_paths]
+        feature_to_gwas_path = {p.name.replace(extension, ""): p for p in gwas_paths}
+        self.inputs.feature_to_gwas_path = feature_to_gwas_path
+        gwas_features = sorted(feature_to_gwas_path.keys())
         if self.features is None:
             self.features = gwas_features
         else:
-            gwas_features_set = sorted(set(gwas_features).intersection(self.features))
-            if len(gwas_features_set) == 0:
+            self.features = sorted(set(gwas_features).intersection(self.features))
+            if len(self.features) == 0:
                 raise ValueError(
                     f"No GWAS features found: {self.features[:3]} not in "
                     f"{gwas_features[:3]}"
                 )
-            self.inputs.gwas_paths = [
-                p
-                for p in gwas_paths
-                if p.name.replace(extension, "") in gwas_features_set
-            ]
-            if len(self.inputs.gwas_paths) == 0:
-                raise ValueError(
-                    f"No GWAS files found: {self.features[:3]} not in "
-                    f"{gwas_features[:3]}"
-                )
-            self.inputs.gwas_file_extension = extension
 
     def process_phenotypes_covariates(
         self,
@@ -187,10 +180,15 @@ class CohortFiles:
         sample_size: str = "OBS_CT",
         separator: str = "\t",
         keep_n_variants: int | None = None,
+        n_covariates: int = 0,
     ) -> None:
-        if self.inputs.gwas_paths is None:
+        if self.inputs.feature_to_gwas_path is None:
             raise ValueError("No GWAS files specified")
-        self.gwas_root.mkdir(parents=True, exist_ok=True)
+        if not self.steps_completed.phenotypes_covariates:
+            raise ValueError(
+                "GWAS can only be processed after the covariance matrix is computed"
+            )
+        covariance_matrix = pd.read_csv(self.covariance_path, index_col=0)
         logger.info("Reading GWAS files")
         schema_overrides = {
             variant_id: pl.Utf8,
@@ -198,28 +196,57 @@ class CohortFiles:
             std_error: pl.Float64,
             sample_size: pl.Int64,
         }
-        gwas_features = [
-            p.name.replace(self.inputs.gwas_file_extension, "")
-            for p in self.inputs.gwas_paths
-        ]
-        for gwas_path, feature_name in track(
-            zip(self.inputs.gwas_paths, gwas_features),
-            total=len(self.inputs.gwas_paths),
+        assert self.features is not None
+        full_gwas_df = None
+        for feature_name in track(
+            self.features,
+            total=len(self.features),
             description="Ingesting GWAS files",
         ):
-            output_path = self.gwas_root.joinpath(feature_name).with_suffix(".tsv.zst")
-            pl.read_csv(
-                gwas_path,
-                separator=separator,
-                schema_overrides=schema_overrides,
-                n_rows=keep_n_variants,
-            ).select(
-                variant_id,
-                beta,
-                std_error,
-                sample_size,
-            ).to_pandas().to_csv(output_path, sep="\t", index=False)
-            # .write_csv(output_path, separator="\t")
+            gwas_path = self.inputs.feature_to_gwas_path[feature_name]
+            phenotype_variance = covariance_matrix.loc[feature_name, feature_name]
+            gwas_df = (
+                pl.read_csv(
+                    gwas_path,
+                    separator=separator,
+                    schema_overrides=schema_overrides,
+                    n_rows=keep_n_variants,
+                )
+                .select(
+                    pl.col(variant_id).alias("variant_id"),
+                    pl.col(beta).alias("beta"),
+                    pl.col(std_error).alias("std_error"),
+                    pl.col(sample_size).alias("sample_size"),
+                )
+                .with_columns(
+                    degrees_of_freedom=(pl.col("sample_size") - n_covariates - 2).cast(
+                        pl.Int32
+                    ),
+                )
+                .with_columns(
+                    genotype_variance=estimate_genotype_variance(
+                        phenotype_variance=phenotype_variance,
+                        degrees_of_freedom=pl.col("degrees_of_freedom"),  # type: ignore
+                        std_error=pl.col("std_error"),  # type: ignore
+                        beta=pl.col("beta"),  # type: ignore
+                    ).cast(pl.Float32),  # type: ignore
+                )
+                .select(
+                    "variant_id",
+                    pl.struct(
+                        ["beta", "degrees_of_freedom", "genotype_variance"]
+                    ).alias(feature_name),
+                )
+            )
+            if full_gwas_df is None:
+                full_gwas_df = gwas_df
+            else:
+                full_gwas_df = full_gwas_df.join(gwas_df, on=["variant_id"])
+
+        assert full_gwas_df is not None
+        logger.info(f"Ingested {full_gwas_df.shape[1] - 1} GWAS results")
+        full_gwas_df.write_parquet(self.gwas_path)
+        logger.info(f"Wrote {len(full_gwas_df)} GWAS results to disk")
         self.steps_completed.gwas = True
 
     def register_feature_map(self, feature_code_to_info: dict[str, Field]) -> None:
@@ -227,7 +254,7 @@ class CohortFiles:
         if self.features is None:
             self.features = sorted(self.feature_code_to_info.keys())
         else:
-            self.features = list(
+            self.features = sorted(
                 set(self.features).intersection(self.feature_code_to_info.keys())
             )
         self.steps_completed.feature_map = True
