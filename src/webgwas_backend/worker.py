@@ -30,7 +30,7 @@ class Worker:
             request = self.job_queue.get()
             logger.info(f"Got request: {request}")
             try:
-                result = handle_igwas(request, self.s3_client, self.settings)
+                result = handle_igwas(request, self.s3_client)
                 self.results[request.id] = result
                 logger.info(f"Finished request: {request.id}")
             except Exception as e:

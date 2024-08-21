@@ -10,7 +10,6 @@ import webgwas.regression
 from fastapi import HTTPException
 from pandas import Series
 
-from webgwas_backend.config import Settings
 from webgwas_backend.models import WebGWASRequestID, WebGWASResult
 from webgwas_backend.s3_client import S3Client
 
@@ -49,39 +48,24 @@ def get_igwas_coef(request: WebGWASRequestID) -> Series:
     return beta_series.round(5).rename(request.id).rename_axis(index="feature")
 
 
-def handle_igwas(
-    request: WebGWASRequestID, s3_client: S3Client, settings: Settings
-) -> WebGWASResult:
+def handle_igwas(request: WebGWASRequestID, s3_client: S3Client) -> WebGWASResult:
     beta_series = get_igwas_coef(request)
+    cov_path = pathlib.Path(request.cohort.root_directory).joinpath(
+        "phenotypic_covariance.csv"
+    )
+    covariance_matrix = pd.read_csv(cov_path, index_col=0)
+    gwas_path = pathlib.Path(request.cohort.root_directory).joinpath("gwas.parquet")
+
     with tempfile.TemporaryDirectory() as temp_dir:
-        logger.info("Writing beta file")
-        beta_file_path = pathlib.Path(temp_dir).joinpath(f"{request.id}.csv").as_posix()
-        beta_series.to_frame().to_csv(beta_file_path)
-        logger.debug(f"Beta file written to {beta_file_path}")
         logger.info("Running Indirect GWAS")
         output_file_path = pathlib.Path(temp_dir).joinpath(f"{request.id}.tsv.zst")
-        cov_path = (
-            pathlib.Path(request.cohort.root_directory)
-            .joinpath("phenotypic_covariance.csv")
-            .as_posix()
-        )
-        gwas_paths = [p.as_posix() for p in request.cohort.get_gwas_paths()]
         try:
-            webgwas.igwas.igwas_files(
-                projection_matrix_path=beta_file_path,
-                covariance_matrix_path=cov_path,
-                gwas_result_paths=gwas_paths,
+            webgwas.igwas.igwas_prod(
+                projection_vector=beta_series,
+                covariance_matrix=covariance_matrix,
+                gwas_result_path=gwas_path.as_posix(),
                 output_file_path=output_file_path.as_posix(),
                 num_covar=request.cohort.num_covar,
-                chunksize=settings.indirect_gwas.chunk_size,
-                variant_id="ID",
-                beta="BETA",
-                std_error="SE",
-                sample_size="OBS_CT",
-                num_threads=settings.indirect_gwas.num_threads,
-                capacity=settings.indirect_gwas.capacity,
-                compress=settings.indirect_gwas.compress,
-                quiet=settings.indirect_gwas.quiet,
             )
         except Exception as e:
             raise HTTPException(status_code=500, detail=f"Error in indirect GWAS: {e}")
