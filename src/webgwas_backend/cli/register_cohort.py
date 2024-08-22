@@ -193,9 +193,9 @@ class CohortFiles:
         logger.info("Reading GWAS files")
         schema_overrides = {
             variant_id: pl.Utf8,
-            beta: pl.Float64,
-            std_error: pl.Float64,
-            sample_size: pl.Int64,
+            beta: pl.Float32,
+            std_error: pl.Float32,
+            sample_size: pl.Int32,
         }
         assert self.features is not None
         full_gwas_df = None
