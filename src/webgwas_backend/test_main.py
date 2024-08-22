@@ -3,6 +3,7 @@ import tempfile
 import time
 
 import pandas as pd
+import polars as pl
 import pytest
 import webgwas.regression
 from fastapi.testclient import TestClient
@@ -63,41 +64,56 @@ def setup_test_data(session: Session, rootdir: pathlib.Path):
     phenotype_data.cov().to_csv(rootdir.joinpath("phenotypic_covariance.csv"))
     left_inverse = webgwas.regression.compute_left_inverse(phenotype_data)
     left_inverse.T.to_parquet(rootdir.joinpath("phenotype_left_inverse.parquet"))
-    # Create GWAS result files
-    gwas_results = {
-        "feature1": pd.DataFrame(
-            {
-                "ID": [1, 2, 3, 4, 5],
-                "BETA": [1.0, 2.0, 3.0, 4.0, 5.0],
-                "SE": [1.0, 2.0, 3.0, 4.0, 5.0],
-                "OBS_CT": [1, 2, 3, 4, 5],
-            }
-        ),
-        "feature2": pd.DataFrame(
-            {
-                "ID": [1, 2, 3, 4, 5],
-                "BETA": [1.0, 2.0, 3.0, 4.0, 5.0],
-                "SE": [1.0, 2.0, 3.0, 4.0, 5.0],
-                "OBS_CT": [1, 2, 3, 4, 5],
-            }
-        ),
-        "feature3": pd.DataFrame(
-            {
-                "ID": [1, 2, 3, 4, 5],
-                "BETA": [1.0, 2.0, 3.0, 4.0, 5.0],
-                "SE": [1.0, 2.0, 3.0, 4.0, 5.0],
-                "OBS_CT": [1, 2, 3, 4, 5],
-            }
-        ),
-    }
-    gwas_dir = rootdir.joinpath("gwas")
-    gwas_dir.mkdir(parents=True, exist_ok=True)
-    for feature, df in gwas_results.items():
-        df.to_csv(
-            gwas_dir.joinpath(f"{feature}.tsv.zst"),
-            sep="\t",
-            index=False,
-        )
+    pl.DataFrame(
+        {
+            "variant_id": ["1", "2", "3", "4", "5"],
+            "feature1": [
+                {"beta": 1.1, "degrees_of_freedom": 1.0, "genotype_variance": 1.0},
+                {"beta": 2.2, "degrees_of_freedom": 2.0, "genotype_variance": 2.0},
+                {"beta": 3.3, "degrees_of_freedom": 3.0, "genotype_variance": 3.0},
+                {"beta": 4.4, "degrees_of_freedom": 4.0, "genotype_variance": 4.0},
+                {"beta": 5.5, "degrees_of_freedom": 5.0, "genotype_variance": 5.0},
+            ],
+            "feature2": [
+                {"beta": 1.5, "degrees_of_freedom": 1.0, "genotype_variance": 1.0},
+                {"beta": 2.5, "degrees_of_freedom": 2.0, "genotype_variance": 2.0},
+                {"beta": 3.5, "degrees_of_freedom": 3.0, "genotype_variance": 3.0},
+                {"beta": 4.5, "degrees_of_freedom": 4.0, "genotype_variance": 4.0},
+                {"beta": 5.5, "degrees_of_freedom": 5.0, "genotype_variance": 5.0},
+            ],
+            "feature3": [
+                {"beta": 1.5, "degrees_of_freedom": 1.0, "genotype_variance": 1.0},
+                {"beta": 2.5, "degrees_of_freedom": 2.0, "genotype_variance": 2.0},
+                {"beta": 3.5, "degrees_of_freedom": 3.0, "genotype_variance": 3.0},
+                {"beta": 4.5, "degrees_of_freedom": 4.0, "genotype_variance": 4.0},
+                {"beta": 5.5, "degrees_of_freedom": 5.0, "genotype_variance": 5.0},
+            ],
+        },
+        schema={
+            "variant_id": pl.Utf8,
+            "feature1": pl.Struct(
+                {
+                    "beta": pl.Float32,
+                    "degrees_of_freedom": pl.Int32,
+                    "genotype_variance": pl.Float32,
+                }
+            ),
+            "feature2": pl.Struct(
+                {
+                    "beta": pl.Float32,
+                    "degrees_of_freedom": pl.Int32,
+                    "genotype_variance": pl.Float32,
+                }
+            ),
+            "feature3": pl.Struct(
+                {
+                    "beta": pl.Float32,
+                    "degrees_of_freedom": pl.Int32,
+                    "genotype_variance": pl.Float32,
+                }
+            ),
+        },
+    ).write_parquet(rootdir.joinpath("gwas.parquet"))
 
 
 def get_session_override():

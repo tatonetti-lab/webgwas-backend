@@ -151,7 +151,7 @@ uvloop==0.19.0
     # via uvicorn
 watchfiles==0.22.0
     # via uvicorn
-webgwas @ git+https://github.com/zietzm/webgwas.git@f5514d2d3d6955779a42ee6a03d81c06684b3a2c
+webgwas @ git+https://github.com/zietzm/webgwas.git@bb627b570e507222accd2fdf08a896565835db0d
     # via webgwas-backend
 websockets==12.0
     # via uvicorn
