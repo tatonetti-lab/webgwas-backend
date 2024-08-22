@@ -156,7 +156,7 @@ class CohortFiles:
             logger.debug(f"Anonymized phenotypes: {anon_df}")
             if mean_center:
                 anon_df = anon_df - anon_df.mean(axis=0)
-            logger.debug(f"Anonymized phenotypes: {anon_df}")
+            logger.debug(f"Anonymized, mean-centered phenotypes: {anon_df}")
             anon_df.to_parquet(self.phenotype_path)
             Y = anon_df
         else:
@@ -166,7 +166,6 @@ class CohortFiles:
             logger.debug(f"Phenotypes: {Y}")
             Y.to_parquet(self.phenotype_path)
         logger.info("Computing left inverse")
-        logger.debug(f"Phenotypes: {Y}")
         left_inverse = webgwas.regression.compute_left_inverse(Y)
         logger.debug(f"Left inverse: {left_inverse}")
         del Y  # Free up memory
