@@ -55,6 +55,7 @@ def handle_igwas(request: WebGWASRequestID, s3_client: S3Client) -> WebGWASResul
     )
     covariance_matrix = pd.read_csv(cov_path, index_col=0)
     gwas_path = pathlib.Path(request.cohort.root_directory).joinpath("gwas.parquet")
+    assert gwas_path.exists(), f"GWAS file not found: {gwas_path}"
 
     with tempfile.TemporaryDirectory() as temp_dir:
         logger.info("Running Indirect GWAS")
