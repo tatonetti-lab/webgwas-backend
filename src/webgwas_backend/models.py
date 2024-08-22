@@ -41,6 +41,8 @@ class Feature(FeatureResponse, SQLModel, table=True):
 
 
 class ValidPhenotypeResponse(SQLModel):
+    is_valid: bool
+    message: str
     phenotype_definition: str
 
 

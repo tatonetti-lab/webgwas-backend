@@ -99,7 +99,12 @@ def validate_phenotype(
         webgwas.phenotype_definitions.type_check_nodes(nodes)
     except Exception as e:
         raise HTTPException(status_code=400, detail=f"Error validating phenotype: {e}")
-    return ValidPhenotype(phenotype_definition=phenotype_definition, valid_nodes=nodes)
+    return ValidPhenotype(
+        phenotype_definition=phenotype_definition,
+        valid_nodes=nodes,
+        is_valid=True,
+        message="Valid phenotype",
+    )
 
 
 @app.post("/api/igwas", response_model=WebGWASResponse)
