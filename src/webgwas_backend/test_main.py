@@ -159,14 +159,21 @@ def test_post_igwas(client, phenotype_definition):
     assert response.status_code == 200, response.json()
     validated = WebGWASResponse.model_validate(response.json())
     assert validated.status == "queued"
-    time.sleep(0.5)
-    status_response = client.get(f"/api/igwas/status/{validated.request_id}")
+    time.sleep(0.1)
+    for _ in range(10):
+        status_response = client.get(f"/api/igwas/status/{validated.request_id}")
+        assert status_response.status_code == 200, status_response.json()
+        validated_status = WebGWASResponse.model_validate(status_response.json())
+        assert validated_status.status == "done"
+        assert validated_status.request_id == validated.request_id
+        if validated_status.status == "done":
+            break
+        time.sleep(0.1)
+    else:
+        raise TimeoutError("Timed out waiting for IGWAS to complete")
+
     result_response = client.get(f"/api/igwas/results/{validated.request_id}")
-    assert status_response.status_code == 200, status_response.json()
     assert result_response.status_code == 200, result_response.json()
-    validated_status = WebGWASResponse.model_validate(status_response.json())
-    assert validated_status.status == "done"
-    assert validated_status.request_id == validated.request_id
     validated_result = WebGWASResult.model_validate(result_response.json())
     assert validated_result.request_id == validated.request_id
     assert validated_result.url is not None
