@@ -10,10 +10,12 @@ import webgwas.regression
 from pydantic import BaseModel
 from rich.logging import RichHandler
 from rich.progress import track
-from sqlmodel import Session, select
+from sqlalchemy import Engine
+from sqlmodel import Session, create_engine, select
 from webgwas.igwas import estimate_genotype_variance
 from webgwas.phenotype_definitions import Field
 
+from webgwas_backend.config import settings
 from webgwas_backend.database import db_exists, engine, init_db
 from webgwas_backend.models import Cohort, Feature
 
@@ -330,11 +332,11 @@ class CohortFiles:
         assert left_inverse_features == set(feature_codes)
 
 
-def cohort_table_exists() -> bool:
+def cohort_table_exists(engine: Engine = engine) -> bool:
     return engine.dialect.has_table(engine.connect(), "cohort")
 
 
-def cohort_already_exists(cohort_name: str) -> bool:
+def cohort_already_exists(engine: Engine, cohort_name: str) -> bool:
     if db_exists():
         if cohort_table_exists():
             with Session(engine) as session:
@@ -348,6 +350,7 @@ def cohort_already_exists(cohort_name: str) -> bool:
 
 def register_cohort(
     *,
+    database_path: str = settings.sqlite_db,
     cohort_name: str,
     output_root: pathlib.Path,
     original_phenotype_path: Annotated[pathlib.Path, typer.Option()],
@@ -369,7 +372,11 @@ def register_cohort(
     keep_n_samples: Optional[int] = None,
     mean_center: bool = True,
 ) -> None:
-    if cohort_already_exists(cohort_name):
+    engine = create_engine(database_path)
+    if not cohort_table_exists(engine):
+        logger.info("Initializing database")
+        init_db(engine)
+    if cohort_already_exists(engine, cohort_name):
         raise ValueError(f"Cohort {cohort_name} already exists")
     logger.info("Creating cohort directory")
     cohort = CohortFiles(cohort_name, output_root)
@@ -402,10 +409,6 @@ def register_cohort(
         separator=gwas_separator,
         keep_n_variants=keep_n_variants,
     )
-    if not db_exists() or not cohort_table_exists():
-        logger.info("Initializing database")
-        init_db()
-
     logger.info("Writing cohort and features to database")
     with Session(engine) as session:
         cohort.write_database(session)
