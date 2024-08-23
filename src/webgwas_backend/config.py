@@ -3,18 +3,13 @@ from __future__ import annotations
 import json
 from typing import Any
 
-import psutil
 from dynaconf import Dynaconf
 from pydantic import BaseModel, Field
 from pydantic_settings import BaseSettings
 
 
 class IndirectGWASSettings(BaseModel):
-    num_threads: int = Field(psutil.cpu_count(), description="Number of threads")
-    chunk_size: int = Field(1000000, description="Chunk size (in variants)")
-    capacity: int = Field(25, description="Capacity (in phenotypes)")
-    compress: bool = Field(True, description="Compress output (zstd)")
-    quiet: bool = Field(False, description="Quiet mode")
+    batch_size: int = Field(10000, description="Batch size (in variants)")
 
 
 class Settings(BaseSettings):
