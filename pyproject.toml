@@ -39,6 +39,7 @@ build-backend = "hatchling.build"
 managed = true
 dev-dependencies = [
     "pytest>=8.3.1",
+    "ruff>=0.6.2",
 ]
 
 [tool.hatch.metadata]
@@ -46,3 +47,6 @@ allow-direct-references = true
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/webgwas_backend"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
