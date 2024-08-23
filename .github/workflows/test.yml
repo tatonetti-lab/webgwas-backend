@@ -22,4 +22,4 @@ jobs:
     - run: uv venv
     - run: uv pip install ruff pytest httpx
     - run: uv run ruff check
-    - run: uv run pytest
+    - run: uv run pytest -v
