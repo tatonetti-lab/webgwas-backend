@@ -1,7 +1,6 @@
 import logging
-import threading
-from contextlib import asynccontextmanager
-from queue import Queue
+from collections.abc import Generator
+from typing import Annotated
 
 import webgwas.phenotype_definitions
 from fastapi import Depends, FastAPI, HTTPException
@@ -21,34 +20,25 @@ from webgwas_backend.models import (
     WebGWASResponse,
     WebGWASResult,
 )
-from webgwas_backend.s3_client import get_s3_client
 from webgwas_backend.worker import Worker
 
 logger = logging.getLogger("uvicorn")
 logger.setLevel(logging.INFO)
+
 init_db()
-s3 = get_s3_client(settings.dry_run, settings.s3_bucket)
-
-job_queue = Queue()
-queued_request_ids = set()
-results = dict()
+worker_group = Worker(settings)
 
 
-def get_session():
+def get_worker() -> Worker:
+    return worker_group
+
+
+def get_session() -> Generator[Session]:
     with Session(engine) as session:
         yield session
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    worker = Worker(job_queue, queued_request_ids, results, s3, settings)
-    t = threading.Thread(target=worker.run)
-    t.daemon = True
-    t.start()
-    yield
-
-
-app = FastAPI(lifespan=lifespan)
+app = FastAPI()
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -59,7 +49,7 @@ app.add_middleware(
 
 
 def validate_cohort(
-    *, session: Session = Depends(get_session), cohort_id: int
+    *, session: Annotated[Session, Depends(get_session)], cohort_id: int
 ) -> Cohort:
     cohort = session.get(Cohort, cohort_id)
     if cohort is None:
@@ -68,19 +58,19 @@ def validate_cohort(
 
 
 @app.get("/api/cohorts", response_model=list[CohortResponse])
-def get_cohorts(session: Session = Depends(get_session)):
+def get_cohorts(session: Annotated[Session, Depends(get_session)]):
     return session.exec(select(Cohort)).all()
 
 
 @app.get("/api/features", response_model=list[FeatureResponse])
-def get_nodes(cohort: Cohort = Depends(validate_cohort)):
+def get_nodes(cohort: Annotated[Cohort, Depends(validate_cohort)]):
     return cohort.features
 
 
 @app.put("/api/phenotype", response_model=ValidPhenotypeResponse)
 def validate_phenotype(
     *,
-    cohort: Cohort = Depends(validate_cohort),
+    cohort: Annotated[Cohort, Depends(validate_cohort)],
     phenotype_definition: str,
 ) -> ValidPhenotype:
     try:
@@ -88,7 +78,9 @@ def validate_phenotype(
             phenotype_definition
         )
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error parsing phenotype: {e}")
+        raise HTTPException(
+            status_code=400, detail=f"Error parsing phenotype: {e}"
+        ) from e
 
     try:
         fields = [
@@ -98,7 +90,9 @@ def validate_phenotype(
         nodes = webgwas.phenotype_definitions.validate_nodes(nodes, knowledge_base)
         webgwas.phenotype_definitions.type_check_nodes(nodes)
     except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Error validating phenotype: {e}")
+        raise HTTPException(
+            status_code=400, detail=f"Error validating phenotype: {e}"
+        ) from e
     return ValidPhenotype(
         phenotype_definition=phenotype_definition,
         valid_nodes=nodes,
@@ -109,39 +103,20 @@ def validate_phenotype(
 
 @app.post("/api/igwas", response_model=WebGWASResponse)
 def post_igwas(
-    cohort: Cohort = Depends(validate_cohort),
-    phenotype_definition: ValidPhenotype = Depends(validate_phenotype),
+    cohort: Annotated[Cohort, Depends(validate_cohort)],
+    phenotype_definition: Annotated[ValidPhenotype, Depends(validate_phenotype)],
+    worker: Annotated[Worker, Depends(get_worker)],
 ) -> WebGWASResponse:
     new_request = WebGWASRequestID(
         cohort=cohort,
         phenotype_definition=phenotype_definition,
     )
-    job_queue.put(new_request)
-    queued_request_ids.add(new_request.id)
+    worker.submit(new_request)
     return WebGWASResponse(request_id=new_request.id, status="queued")
 
 
-@app.get("/api/igwas/status/{request_id}", response_model=WebGWASResponse)
-def get_igwas_status(request_id: str) -> WebGWASResponse:
-    queued = request_id in queued_request_ids
-    if queued:
-        return WebGWASResponse(request_id=request_id, status="queued")
-    result_exists = request_id in results
-    if result_exists:
-        return results[request_id]
-    raise HTTPException(status_code=404, detail="Request not found")
-
-
 @app.get("/api/igwas/results/{request_id}", response_model=WebGWASResult)
-def get_igwas_results(request_id: str) -> WebGWASResult:
-    result = results.get(request_id)
-    queued = request_id in queued_request_ids
-    if result is None and not queued:
-        raise HTTPException(status_code=404, detail="Request not found")
-    elif result is None and queued:
-        raise HTTPException(status_code=202, detail="Request is queued")
-    else:
-        assert result is not None
-        if result.status == "error":
-            raise HTTPException(status_code=500, detail=result.error_msg)
-    return result
+def get_igwas_results(
+    request_id: str, worker: Annotated[Worker, Depends(get_worker)]
+) -> WebGWASResult:
+    return worker.get_results(request_id)

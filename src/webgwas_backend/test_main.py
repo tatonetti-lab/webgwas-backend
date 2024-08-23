@@ -10,7 +10,8 @@ from fastapi.testclient import TestClient
 from sqlmodel import Session, create_engine
 from webgwas.phenotype_definitions import NodeType
 
-from webgwas_backend.main import app, get_session
+from webgwas_backend.config import IndirectGWASSettings, Settings
+from webgwas_backend.main import app, get_session, get_worker
 from webgwas_backend.models import (
     Cohort,
     Feature,
@@ -18,6 +19,7 @@ from webgwas_backend.models import (
     WebGWASResponse,
     WebGWASResult,
 )
+from webgwas_backend.worker import Worker
 
 
 def setup_db(session: Session, rootdir: pathlib.Path):
@@ -128,7 +130,20 @@ def get_session_override():
 
 @pytest.fixture
 def client():
+    settings = Settings(
+        dry_run=True,
+        s3_bucket="TEST",
+        sqlite_db=":memory:",
+        n_workers=1,
+        indirect_gwas=IndirectGWASSettings(batch_size=10000),
+    )
+    worker = Worker(settings)
+
+    def get_worker_override():
+        return worker
+
     app.dependency_overrides[get_session] = get_session_override
+    app.dependency_overrides[get_worker] = get_worker_override
     with TestClient(app) as client:
         yield client
 
@@ -164,7 +179,7 @@ def test_validate_phenotype(client: TestClient):
         ('"feature1" "feature2" `DIV` "feature3" `ADD`'),
     ],
 )
-def test_post_igwas(client, phenotype_definition):
+def test_post_igwas(client: TestClient, phenotype_definition: str):
     response = client.post(
         "/api/igwas",
         params={
@@ -177,10 +192,9 @@ def test_post_igwas(client, phenotype_definition):
     assert validated.status == "queued"
     time.sleep(0.1)
     for _ in range(10):
-        status_response = client.get(f"/api/igwas/status/{validated.request_id}")
-        assert status_response.status_code == 200, status_response.json()
-        validated_status = WebGWASResponse.model_validate(status_response.json())
-        assert validated_status.status == "done"
+        status_response = client.get(f"/api/igwas/results/{validated.request_id}")
+        assert status_response.status_code in {200, 202}, status_response.json()
+        validated_status = WebGWASResult.model_validate(status_response.json())
         assert validated_status.request_id == validated.request_id
         if validated_status.status == "done":
             break
