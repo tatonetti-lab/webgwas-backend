@@ -11,7 +11,7 @@ from fastapi import HTTPException
 from pandas import Series
 
 from webgwas_backend.models import WebGWASRequestID, WebGWASResult
-from webgwas_backend.s3_client import S3Client
+from webgwas_backend.s3_client import get_s3_client
 
 logger = logging.getLogger("uvicorn")
 
@@ -48,7 +48,9 @@ def get_igwas_coef(request: WebGWASRequestID) -> Series:
     return beta_series.round(5).rename(request.id).rename_axis(index="feature")
 
 
-def handle_igwas(request: WebGWASRequestID, s3_client: S3Client) -> WebGWASResult:
+def handle_igwas(
+    request: WebGWASRequestID, dry_run: bool, s3_bucket: str, batch_size: int
+) -> WebGWASResult:
     beta_series = get_igwas_coef(request)
     cov_path = pathlib.Path(request.cohort.root_directory).joinpath(
         "phenotypic_covariance.csv"
@@ -67,12 +69,16 @@ def handle_igwas(request: WebGWASRequestID, s3_client: S3Client) -> WebGWASResul
                 gwas_result_path=gwas_path.as_posix(),
                 output_file_path=output_file_path.as_posix(),
                 num_covar=request.cohort.num_covar,
+                batch_size=batch_size,
             )
         except Exception as e:
-            raise HTTPException(status_code=500, detail=f"Error in indirect GWAS: {e}")
+            raise HTTPException(
+                status_code=500, detail=f"Error in indirect GWAS {e}"
+            ) from e
 
         # Upload the result to S3
         logger.info("Uploading result to S3")
+        s3_client = get_s3_client(dry_run, s3_bucket)
         s3_client.upload_file(output_file_path.as_posix(), output_file_path.name)
 
     logger.info("Getting presigned URL")

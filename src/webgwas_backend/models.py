@@ -86,11 +86,9 @@ class WebGWASResponse(SQLModel):
     )
 
 
-class WebGWASResult(SQLModel):
+class WebGWASResult(WebGWASResponse):
     """Result of a successful GWAS"""
 
-    request_id: str = Field(..., description="Unique identifier for the request.")
-    status: str = Field(..., description="Status of the request.")
     error_msg: str | None = Field(
         default=None, description="Error message if status is 'error'."
     )

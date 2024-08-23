@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     s3_bucket: str
     sqlite_db: str
     indirect_gwas: IndirectGWASSettings
+    n_workers: int
 
     @classmethod
     def from_json(cls, json_data: dict[str, Any]) -> Settings:

@@ -1,44 +1,50 @@
 import logging
-from queue import Queue
+from concurrent.futures import Future, ProcessPoolExecutor
+from multiprocessing import Manager
+
+from fastapi import HTTPException
 
 from webgwas_backend.config import Settings
 from webgwas_backend.igwas_handler import handle_igwas
 from webgwas_backend.models import WebGWASRequestID, WebGWASResult
-from webgwas_backend.s3_client import S3Client
 
 logger = logging.getLogger("uvicorn")
 
 
 class Worker:
-    def __init__(
-        self,
-        job_queue: Queue[WebGWASRequestID],
-        queued_request_ids: set[str],
-        results: dict[str, WebGWASResult],
-        s3_client: S3Client,
-        settings: Settings,
-    ):
-        self.job_queue = job_queue
-        self.queued_request_ids = queued_request_ids
-        self.results = results
-        self.s3_client = s3_client
-        self.settings = settings
+    def __init__(self, settings: Settings):
+        self.s3_dry_run = settings.dry_run
+        self.s3_bucket = settings.s3_bucket
 
-    def run(self):
-        logger.info("Starting worker")
-        while True:
-            request = self.job_queue.get()
-            logger.info(f"Got request: {request}")
-            try:
-                result = handle_igwas(request, self.s3_client)
-                self.results[request.id] = result
-                logger.info(f"Finished request: {request.id}")
-            except Exception as e:
-                msg = f"{e}"
-                logger.error(msg)
-                self.results[request.id] = WebGWASResult(
-                    request_id=request.id, status="error", error_msg=msg
-                )
-            self.job_queue.task_done()
+        self.manager = Manager()
+        self.lock = self.manager.Lock()
+        self.results: dict[str, Future[WebGWASResult]] = dict()
+        self.executor = ProcessPoolExecutor(max_workers=settings.n_workers)
 
-            self.queued_request_ids.remove(request.id)
+    def submit(self, request: WebGWASRequestID):
+        logger.info(f"Submitting request: {request}")
+        with self.lock:
+            self.results[request.id] = self.executor.submit(
+                self.handle_request, request, self.s3_dry_run, self.s3_bucket
+            )
+        logger.info(f"Queued request: {request.id}")
+
+    @staticmethod
+    def handle_request(request: WebGWASRequestID, dry_run: bool, s3_bucket: str):
+        try:
+            return handle_igwas(request, dry_run, s3_bucket)
+        except Exception as e:
+            return WebGWASResult(
+                request_id=request.id, status="error", error_msg=f"{e}"
+            )
+
+    def get_results(self, request_id: str) -> WebGWASResult:
+        with self.lock:
+            future = self.results.get(request_id)
+            if future is None:
+                raise HTTPException(status_code=404, detail="Request not found")
+            if future.running():
+                return WebGWASResult(request_id=request_id, status="queued")
+            if future.done():
+                return future.result()
+        raise HTTPException(status_code=500, detail=f"Internal error: {future}")
