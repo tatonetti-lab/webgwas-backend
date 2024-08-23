@@ -55,3 +55,7 @@ class Worker:
             if future.done():
                 return future.result()
         raise HTTPException(status_code=500, detail=f"Internal error: {future}")
+
+    def shutdown(self):
+        self.executor.shutdown(wait=True, cancel_futures=True)
+        self.manager.shutdown()

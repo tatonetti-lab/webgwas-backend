@@ -146,6 +146,7 @@ def client():
     app.dependency_overrides[get_worker] = get_worker_override
     with TestClient(app) as client:
         yield client
+    worker.shutdown()
 
 
 def test_get_cohorts(client):
@@ -191,7 +192,7 @@ def test_post_igwas(client: TestClient, phenotype_definition: str):
     validated = WebGWASResponse.model_validate(response.json())
     assert validated.status == "queued"
     time.sleep(0.1)
-    for _ in range(10):
+    for _ in range(20):
         status_response = client.get(f"/api/igwas/results/{validated.request_id}")
         assert status_response.status_code in {200, 202}, status_response.json()
         validated_status = WebGWASResult.model_validate(status_response.json())

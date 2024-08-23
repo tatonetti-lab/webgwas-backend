@@ -19,7 +19,7 @@ jobs:
     steps:
     - uses: actions/checkout@v4
     - name: setup rye
-      uses: sksat/setup-rye@v0.27.0
+      uses: sksat/setup-rye@v0.28.0
       with:
         use-uv: true
     - name: sync
