@@ -196,9 +196,13 @@ def test_post_igwas(client: TestClient, phenotype_definition: str):
         assert status_response.status_code in {200, 202}, status_response.json()
         validated_status = WebGWASResult.model_validate(status_response.json())
         assert validated_status.request_id == validated.request_id
-        if validated_status.status == "done":
-            break
-        time.sleep(0.1)
+        match validated_status.status:
+            case "done":
+                break
+            case "queued":
+                time.sleep(0.1)
+            case "error":
+                raise ValueError(f"Unexpected status: {validated_status}")
     else:
         raise TimeoutError("Timed out waiting for IGWAS to complete")
 

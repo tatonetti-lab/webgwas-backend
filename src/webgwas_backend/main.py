@@ -57,17 +57,29 @@ def validate_cohort(
     return cohort
 
 
-@app.get("/api/cohorts", response_model=list[CohortResponse])
+@app.get(
+    "/api/cohorts",
+    response_model=list[CohortResponse],
+    response_model_exclude_none=True,
+)
 def get_cohorts(session: Annotated[Session, Depends(get_session)]):
     return session.exec(select(Cohort)).all()
 
 
-@app.get("/api/features", response_model=list[FeatureResponse])
+@app.get(
+    "/api/features",
+    response_model=list[FeatureResponse],
+    response_model_exclude_none=True,
+)
 def get_nodes(cohort: Annotated[Cohort, Depends(validate_cohort)]):
     return cohort.features
 
 
-@app.put("/api/phenotype", response_model=ValidPhenotypeResponse)
+@app.put(
+    "/api/phenotype",
+    response_model=ValidPhenotypeResponse,
+    response_model_exclude_none=True,
+)
 def validate_phenotype(
     *,
     cohort: Annotated[Cohort, Depends(validate_cohort)],
@@ -101,7 +113,9 @@ def validate_phenotype(
     )
 
 
-@app.post("/api/igwas", response_model=WebGWASResponse)
+@app.post(
+    "/api/igwas", response_model=WebGWASResponse, response_model_exclude_none=True
+)
 def post_igwas(
     cohort: Annotated[Cohort, Depends(validate_cohort)],
     phenotype_definition: Annotated[ValidPhenotype, Depends(validate_phenotype)],
@@ -115,7 +129,11 @@ def post_igwas(
     return WebGWASResponse(request_id=new_request.id, status="queued")
 
 
-@app.get("/api/igwas/results/{request_id}", response_model=WebGWASResult)
+@app.get(
+    "/api/igwas/results/{request_id}",
+    response_model=WebGWASResult,
+    response_model_exclude_none=True,
+)
 def get_igwas_results(
     request_id: str, worker: Annotated[Worker, Depends(get_worker)]
 ) -> WebGWASResult:
