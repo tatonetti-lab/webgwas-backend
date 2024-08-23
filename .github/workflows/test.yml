@@ -15,16 +15,11 @@ permissions:
 jobs:
   build:
     runs-on: ubuntu-latest
-
     steps:
     - uses: actions/checkout@v4
-    - name: setup rye
-      uses: sksat/setup-rye@v0.28.0
-      with:
-        use-uv: true
-    - name: sync
-      run: rye sync
-    - name: lint
-      run: rye lint
-    - name: test
-      run: rye test
+    - run: curl -LsSf https://astral.sh/uv/install.sh | sh
+    - run: source $HOME/.cargo/env
+    - run: uv venv
+    - run: uv pip install ruff pytest httpx
+    - run: uv run ruff check
+    - run: uv run pytest
