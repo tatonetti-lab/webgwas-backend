@@ -59,3 +59,24 @@ class Worker:
     def shutdown(self):
         self.executor.shutdown(wait=True, cancel_futures=True)
         self.manager.shutdown()
+
+
+class TestWorker(Worker):
+    __test__ = False
+
+    def __init__(self, settings: Settings):
+        self.s3_dry_run = settings.dry_run
+        self.s3_bucket = settings.s3_bucket
+        self.batch_size = settings.indirect_gwas.batch_size
+        self.id_to_result: dict[str, WebGWASResult] = {}
+
+    def submit(self, request: WebGWASRequestID):
+        logger.info(f"Submitting request: {request}")
+        result = self.handle_request(
+            request, self.s3_dry_run, self.s3_bucket, self.batch_size
+        )
+        self.id_to_result[request.id] = result
+        logger.info(f"Queued request: {request.id}")
+
+    def get_results(self, request_id: str) -> WebGWASResult:
+        return self.id_to_result[request_id]

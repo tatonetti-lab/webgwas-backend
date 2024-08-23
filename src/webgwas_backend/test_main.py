@@ -19,7 +19,7 @@ from webgwas_backend.models import (
     WebGWASResponse,
     WebGWASResult,
 )
-from webgwas_backend.worker import Worker
+from webgwas_backend.worker import TestWorker
 
 
 def setup_db(session: Session, rootdir: pathlib.Path):
@@ -134,10 +134,10 @@ def client():
         dry_run=True,
         s3_bucket="TEST",
         sqlite_db=":memory:",
-        n_workers=1,
+        n_workers=2,
         indirect_gwas=IndirectGWASSettings(batch_size=10000),
     )
-    worker = Worker(settings)
+    worker = TestWorker(settings)
 
     def get_worker_override():
         return worker
@@ -146,7 +146,6 @@ def client():
     app.dependency_overrides[get_worker] = get_worker_override
     with TestClient(app) as client:
         yield client
-    worker.shutdown()
 
 
 def test_get_cohorts(client):
