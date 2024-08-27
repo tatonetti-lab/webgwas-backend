@@ -1,5 +1,5 @@
+import os
 import pathlib
-import tempfile
 from abc import ABC, abstractmethod
 
 import boto3
@@ -34,15 +34,15 @@ class S3ProdClient(S3Client):
 
 class S3MockClient(S3Client):
     def __init__(self, bucket: str = "webgwas"):
-        self.temp_dir = tempfile.TemporaryDirectory()
-        self.data_dir = pathlib.Path(self.temp_dir.name)
+        self.temp_dir = pathlib.Path(os.getcwd()).joinpath("temp_data")
+        self.temp_dir.mkdir(exist_ok=True)
         self.files = {}
         self.bucket = bucket
 
     def upload_file(self, local_path, key):
-        pathlib.Path(local_path).rename(self.data_dir / key)
+        pathlib.Path(local_path).rename(self.temp_dir / key)
         bucket_keys = self.files.setdefault(self.bucket, {})
-        bucket_keys[key] = self.data_dir / key
+        bucket_keys[key] = self.temp_dir / key
 
     def get_presigned_url(self, key):
         return self.files[self.bucket][key].as_posix()
