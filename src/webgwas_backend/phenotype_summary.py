@@ -5,6 +5,7 @@ import pathlib
 import numpy as np
 import pandas as pd
 import polars as pl
+import sklearn.metrics
 import webgwas.phenotype_definitions
 import webgwas.regression
 from pandas import Series
@@ -52,11 +53,8 @@ def get_phenotype_summary(
         .rename_axis(index="feature")
     )
     yhat = features_df @ beta_series
-    rsquared = (
-        1
-        - np.square(target_phenotype - yhat).sum()
-        / np.square(target_phenotype - target_phenotype.mean()).sum()
-    )
+    rsquared = sklearn.metrics.r2_score(target_phenotype, yhat)
+    assert isinstance(rsquared, float)
     phenotype_counts = collections.Counter(zip(target_phenotype, yhat, strict=True))
     phenotypes = [
         ApproximatePhenotypeValues(
