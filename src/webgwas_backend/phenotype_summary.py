@@ -1,3 +1,4 @@
+import collections
 import logging
 import pathlib
 
@@ -56,16 +57,18 @@ def get_phenotype_summary(
         - np.square(target_phenotype - yhat).sum()
         / np.square(target_phenotype - target_phenotype.mean()).sum()
     )
+    phenotype_counts = collections.Counter(zip(target_phenotype, yhat, strict=True))
     phenotypes = [
         ApproximatePhenotypeValues(
-            true=float(
+            t=float(
                 np.format_float_positional(true_value, precision=3, fractional=False)
             ),
-            approx=float(
+            a=float(
                 np.format_float_positional(approx_value, precision=3, fractional=False)
             ),
+            n=value,
         )
-        for true_value, approx_value in zip(target_phenotype, yhat, strict=True)
+        for (true_value, approx_value), value in phenotype_counts.items()
     ]
     result = PhenotypeSummary(
         phenotype_definition=phenotype_definition.phenotype_definition,

@@ -98,6 +98,7 @@ class WebGWASResult(WebGWASResponse):
 class ApproximatePhenotypeValues(SQLModel):
     t: float = Field(description="True value of the feature")
     a: float = Field(description="Approximate value of the feature")
+    n: int = Field(description="Number of samples with this value")
 
 
 class PhenotypeSummary(SQLModel):
