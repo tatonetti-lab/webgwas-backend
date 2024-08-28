@@ -14,11 +14,15 @@ from webgwas_backend.models import (
     Cohort,
     CohortResponse,
     FeatureResponse,
+    PhenotypeSummary,
     ValidPhenotype,
     ValidPhenotypeResponse,
     WebGWASRequestID,
     WebGWASResponse,
     WebGWASResult,
+)
+from webgwas_backend.phenotype_summary import (
+    get_phenotype_summary as get_phenotype_summary_impl,
 )
 from webgwas_backend.worker import Worker
 
@@ -111,6 +115,18 @@ def validate_phenotype(
         is_valid=True,
         message="Valid phenotype",
     )
+
+
+@app.get(
+    "/api/phenotype_summary",
+    response_model=PhenotypeSummary,
+    response_model_exclude_none=True,
+)
+def get_phenotype_summary(
+    cohort: Annotated[Cohort, Depends(validate_cohort)],
+    phenotype_definition: Annotated[ValidPhenotype, Depends(validate_phenotype)],
+) -> PhenotypeSummary:
+    return get_phenotype_summary_impl(cohort, phenotype_definition)
 
 
 @app.post(

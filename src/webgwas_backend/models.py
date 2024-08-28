@@ -93,3 +93,29 @@ class WebGWASResult(WebGWASResponse):
         default=None, description="Error message if status is 'error'."
     )
     url: str | None = Field(default=None, description="URL to the result file.")
+
+
+class ApproximatePhenotypeValues(SQLModel):
+    true: float = Field(..., description="True value of the feature")
+    approx: float = Field(..., description="Approximate value of the feature")
+
+
+class PhenotypeSummary(SQLModel):
+    """Summary of a phenotype definition"""
+
+    phenotype_definition: str = Field(
+        ...,
+        description=("Phenotype definition in reverse polish notation. "),
+    )
+    cohort_name: str = Field(
+        ...,
+        description=("Cohort for which to run the GWAS. "),
+    )
+    phenotypes: list[ApproximatePhenotypeValues] = Field(
+        ...,
+        description=(
+            "True and approximate phenotype values for each sample in the "
+            "anonymized cohort"
+        ),
+    )
+    rsquared: float = Field(..., description="R-squared of the phenotype definition")
