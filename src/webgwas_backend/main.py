@@ -125,8 +125,9 @@ def validate_phenotype(
 def get_phenotype_summary(
     cohort: Annotated[Cohort, Depends(validate_cohort)],
     phenotype_definition: Annotated[ValidPhenotype, Depends(validate_phenotype)],
+    n_samples: int = 1000,
 ) -> PhenotypeSummary:
-    return get_phenotype_summary_impl(cohort, phenotype_definition)
+    return get_phenotype_summary_impl(cohort, phenotype_definition).subsample(n_samples)
 
 
 @app.post(

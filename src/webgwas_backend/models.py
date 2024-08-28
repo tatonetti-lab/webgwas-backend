@@ -120,3 +120,19 @@ class PhenotypeSummary(SQLModel):
         ),
     )
     rsquared: float = Field(..., description="R-squared of the phenotype definition")
+
+    def subsample(self, n_samples: int) -> "PhenotypeSummary":
+        phenotypes = [
+            ApproximatePhenotypeValues(
+                t=p.t,
+                a=p.a,
+                n=p.n,
+            )
+            for p in self.phenotypes[:n_samples]
+        ]
+        return PhenotypeSummary(
+            phenotype_definition=self.phenotype_definition,
+            cohort_name=self.cohort_name,
+            phenotypes=phenotypes,
+            rsquared=self.rsquared,
+        )
