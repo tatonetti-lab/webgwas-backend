@@ -52,7 +52,7 @@ def get_phenotype_summary(
         .rename(phenotype_definition.phenotype_definition)
         .rename_axis(index="feature")
     )
-    yhat = features_df @ beta_series
+    yhat = features_df.assign(const=1.0) @ beta_series
     rsquared = sklearn.metrics.r2_score(target_phenotype, yhat)
     assert isinstance(rsquared, float)
     phenotype_counts = collections.Counter(zip(target_phenotype, yhat, strict=True))

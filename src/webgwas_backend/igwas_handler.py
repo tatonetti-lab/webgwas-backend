@@ -51,7 +51,7 @@ def get_igwas_coef(request: WebGWASRequestID) -> Series:
 def handle_igwas(
     request: WebGWASRequestID, dry_run: bool, s3_bucket: str
 ) -> WebGWASResult:
-    beta_series = get_igwas_coef(request)
+    beta_series = get_igwas_coef(request).drop("const")
     cov_path = pathlib.Path(request.cohort.root_directory).joinpath(
         "phenotypic_covariance.csv"
     )
@@ -72,7 +72,7 @@ def handle_igwas(
             )
         except Exception as e:
             raise HTTPException(
-                status_code=500, detail=f"Error in indirect GWAS {e}"
+                status_code=500, detail=f"Error in indirect GWAS: {e}"
             ) from e
 
         # Upload the result to S3
