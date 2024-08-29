@@ -1,10 +1,13 @@
 import logging
 from collections.abc import Generator
+from contextlib import asynccontextmanager
+from functools import lru_cache
 from typing import Annotated
 
 import webgwas.phenotype_definitions
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import Engine
 from sqlmodel import Session, select
 from webgwas.phenotype_definitions import Field, KnowledgeBase
 
@@ -27,22 +30,35 @@ from webgwas_backend.phenotype_summary import (
 from webgwas_backend.worker import Worker
 
 logger = logging.getLogger("uvicorn")
-logger.setLevel(logging.INFO)
+logger.setLevel(logging.DEBUG)
 
 init_db()
-worker_group = Worker(settings)
+
+worker: Worker | None = None
 
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):  # noqa: ARG001
+    global worker
+    worker = Worker(settings)
+    yield
+
+
+@lru_cache(maxsize=1)
 def get_worker() -> Worker:
-    return worker_group
+    return Worker(settings)
 
 
-def get_session() -> Generator[Session]:
+def get_engine() -> Engine:
+    return engine
+
+
+def get_session(engine: Annotated[Engine, Depends(get_engine)]) -> Generator[Session]:
     with Session(engine) as session:
         yield session
 
 
-app = FastAPI()
+app = FastAPI(lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

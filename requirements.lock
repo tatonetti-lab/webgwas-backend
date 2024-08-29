@@ -53,24 +53,32 @@ idna==3.7
     # via anyio
     # via email-validator
     # via httpx
+igwas @ git+https://github.com/tatonetti-lab/indirect-gwas@e0546ff0fe39624cfab9bd02cec80dcdd14e5af7
+    # via webgwas
 jinja2==3.1.4
     # via fastapi
 jmespath==1.0.1
     # via boto3
     # via botocore
+joblib==1.4.2
+    # via scikit-learn
 markdown-it-py==3.0.0
     # via rich
 markupsafe==2.1.5
     # via jinja2
 mdurl==0.1.2
     # via markdown-it-py
-numpy==2.0.1
+numpy==2.1.0
+    # via igwas
     # via pandas
     # via pyarrow
+    # via scikit-learn
+    # via scipy
     # via webgwas
 orjson==3.10.6
     # via fastapi
 pandas==2.2.2
+    # via igwas
     # via webgwas
     # via webgwas-backend
 polars==1.3.0
@@ -106,6 +114,10 @@ rich==13.7.1
     # via webgwas-backend
 s3transfer==0.10.2
     # via boto3
+scikit-learn==1.5.1
+    # via webgwas-backend
+scipy==1.14.1
+    # via scikit-learn
 shellingham==1.5.4
     # via typer
 six==1.16.0
@@ -119,6 +131,8 @@ sqlmodel==0.0.21
     # via webgwas-backend
 starlette==0.37.2
     # via fastapi
+threadpoolctl==3.5.0
+    # via scikit-learn
 typer==0.12.3
     # via fastapi-cli
     # via webgwas-backend
@@ -140,9 +154,10 @@ uvloop==0.19.0
     # via uvicorn
 watchfiles==0.22.0
     # via uvicorn
-webgwas @ git+https://github.com/zietzm/webgwas.git@bb627b570e507222accd2fdf08a896565835db0d
+webgwas @ git+https://github.com/zietzm/webgwas.git@fa93c0bbb02ab92c03af5975bbb36770f7c70445
     # via webgwas-backend
 websockets==12.0
     # via uvicorn
 zstandard==0.23.0
+    # via igwas
     # via webgwas-backend
