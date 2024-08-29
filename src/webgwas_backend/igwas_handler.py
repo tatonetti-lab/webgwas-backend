@@ -51,7 +51,7 @@ def get_igwas_coef(request: WebGWASRequestID) -> Series:
 def handle_igwas(
     request: WebGWASRequestID, dry_run: bool, s3_bucket: str
 ) -> WebGWASResult:
-    beta_series = get_igwas_coef(request).drop("const")
+    beta_series = get_igwas_coef(request).drop("const", errors="ignore")
     cov_path = pathlib.Path(request.cohort.root_directory).joinpath(
         "phenotypic_covariance.csv"
     )
