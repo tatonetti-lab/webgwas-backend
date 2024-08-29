@@ -4,4 +4,3 @@ sqlite_db = "sqlite:///backend.db"
 n_workers = 1
 
 [indirect_gwas]
-batch_size = 10000

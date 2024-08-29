@@ -15,7 +15,6 @@ class Worker:
     def __init__(self, settings: Settings):
         self.s3_dry_run = settings.dry_run
         self.s3_bucket = settings.s3_bucket
-        self.batch_size = settings.indirect_gwas.batch_size
 
         self.manager = Manager()
         self.lock = self.manager.Lock()
@@ -30,16 +29,13 @@ class Worker:
                 request,
                 self.s3_dry_run,
                 self.s3_bucket,
-                self.batch_size,
             )
         logger.info(f"Queued request: {request.id}")
 
     @staticmethod
-    def handle_request(
-        request: WebGWASRequestID, dry_run: bool, s3_bucket: str, batch_size: int
-    ):
+    def handle_request(request: WebGWASRequestID, dry_run: bool, s3_bucket: str):
         try:
-            return handle_igwas(request, dry_run, s3_bucket, batch_size)
+            return handle_igwas(request, dry_run, s3_bucket)
         except Exception as e:
             return WebGWASResult(
                 request_id=request.id, status="error", error_msg=f"{e}"
@@ -67,14 +63,11 @@ class TestWorker(Worker):
     def __init__(self, settings: Settings):
         self.s3_dry_run = settings.dry_run
         self.s3_bucket = settings.s3_bucket
-        self.batch_size = settings.indirect_gwas.batch_size
         self.id_to_result: dict[str, WebGWASResult] = {}
 
     def submit(self, request: WebGWASRequestID):
         logger.info(f"Submitting request: {request}")
-        result = self.handle_request(
-            request, self.s3_dry_run, self.s3_bucket, self.batch_size
-        )
+        result = self.handle_request(request, self.s3_dry_run, self.s3_bucket)
         self.id_to_result[request.id] = result
         logger.info(f"Queued request: {request.id}")
 

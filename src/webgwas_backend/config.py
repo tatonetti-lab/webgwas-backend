@@ -4,12 +4,12 @@ import json
 from typing import Any
 
 from dynaconf import Dynaconf
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 from pydantic_settings import BaseSettings
 
 
 class IndirectGWASSettings(BaseModel):
-    batch_size: int = Field(10000, description="Batch size (in variants)")
+    pass
 
 
 class Settings(BaseSettings):

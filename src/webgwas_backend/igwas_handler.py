@@ -49,7 +49,7 @@ def get_igwas_coef(request: WebGWASRequestID) -> Series:
 
 
 def handle_igwas(
-    request: WebGWASRequestID, dry_run: bool, s3_bucket: str, batch_size: int
+    request: WebGWASRequestID, dry_run: bool, s3_bucket: str
 ) -> WebGWASResult:
     beta_series = get_igwas_coef(request)
     cov_path = pathlib.Path(request.cohort.root_directory).joinpath(
@@ -69,7 +69,6 @@ def handle_igwas(
                 gwas_result_path=gwas_path.as_posix(),
                 output_file_path=output_file_path.as_posix(),
                 num_covar=request.cohort.num_covar,
-                batch_size=batch_size,
             )
         except Exception as e:
             raise HTTPException(

@@ -135,7 +135,7 @@ def client():
         s3_bucket="TEST",
         sqlite_db=":memory:",
         n_workers=2,
-        indirect_gwas=IndirectGWASSettings(batch_size=10000),
+        indirect_gwas=IndirectGWASSettings(),
     )
     worker = TestWorker(settings)
 
