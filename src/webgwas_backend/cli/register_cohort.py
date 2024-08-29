@@ -166,7 +166,7 @@ class CohortFiles:
             logger.debug(f"Phenotypes: {Y}")
             Y.to_parquet(self.phenotype_path)
         logger.info("Computing left inverse")
-        left_inverse = webgwas.regression.compute_left_inverse(Y)
+        left_inverse = webgwas.regression.compute_left_inverse(Y.assign(const=1.0))
         logger.debug(f"Left inverse: {left_inverse}")
         del Y  # Free up memory
         logger.info("Writing left inverse")
@@ -328,7 +328,7 @@ class CohortFiles:
         assert set(covariance_df.index) == set(feature_codes)
         left_inverse_df = pd.read_parquet(self.left_inverse_path)
         left_inverse_features = set(left_inverse_df.columns)
-        assert left_inverse_features == set(feature_codes)
+        assert left_inverse_features == set(feature_codes).union({"const"})
 
 
 def cohort_table_exists(engine: Engine = engine) -> bool:
@@ -412,6 +412,7 @@ def register_cohort(
     with Session(engine) as session:
         cohort.write_database(session)
         logger.info("Done, validating cohort")
+        # TODO: Could wrap a try here and delete the cohort if it fails
         cohort.validate(session)
     logger.info(f"Done, {cohort.name} registered successfully")
 
