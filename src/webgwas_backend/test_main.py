@@ -119,7 +119,7 @@ def setup_test_data(session: Session, rootdir: pathlib.Path):
 
 
 def get_session_override():
-    with tempfile.TemporaryDirectory(delete=False) as rootdir:
+    with tempfile.TemporaryDirectory() as rootdir:
         rootdir = pathlib.Path(rootdir)
         engine = create_engine("sqlite:///:memory:")
         SQLModel.metadata.create_all(engine)
