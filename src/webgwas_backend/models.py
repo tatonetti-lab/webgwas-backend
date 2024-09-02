@@ -101,6 +101,13 @@ class ApproximatePhenotypeValues(SQLModel):
     n: int = Field(description="Number of samples with this value")
 
 
+class PhenotypeFitQuality(SQLModel):
+    p: float = Field(description="Phenotype fit quality (R-squared)")
+    g: float = Field(
+        description="GWAS (negative log10 p-value) fit quality (R-squared)"
+    )
+
+
 class PhenotypeSummary(SQLModel):
     """Summary of a phenotype definition"""
 
@@ -119,6 +126,10 @@ class PhenotypeSummary(SQLModel):
             "anonymized cohort"
         ),
     )
+    fit_quality: list[PhenotypeFitQuality] = Field(
+        ...,
+        description="Reference GWAS and phenotype fit quality",
+    )
     rsquared: float = Field(..., description="R-squared of the phenotype definition")
 
     def subsample(self, n_samples: int) -> "PhenotypeSummary":
@@ -135,4 +146,5 @@ class PhenotypeSummary(SQLModel):
             cohort_name=self.cohort_name,
             phenotypes=phenotypes,
             rsquared=self.rsquared,
+            fit_quality=self.fit_quality,
         )

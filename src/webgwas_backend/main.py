@@ -18,6 +18,7 @@ from webgwas_backend.models import (
     Cohort,
     CohortResponse,
     FeatureResponse,
+    PhenotypeFitQuality,
     PhenotypeSummary,
     ValidPhenotype,
     ValidPhenotypeResponse,
@@ -36,18 +37,29 @@ logger.setLevel(logging.DEBUG)
 init_db()
 
 worker: Worker | None = None
-fit_quality: list[tuple[float, float]] | None = None
+fit_quality: list[PhenotypeFitQuality] | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # noqa: ARG001
     global worker
     worker = Worker(settings)
+    fit_quality_vals = [
+        (float(f"{x:.3f}"), float(f"{y:.3f}"))
+        for x, y in pl.read_parquet(settings.fit_quality_file)
+        .to_pandas()
+        .values.tolist()
+    ]
     global fit_quality
-    fit_quality = pl.read_parquet(settings.fit_quality_file).to_pandas().values.tolist()
-    assert fit_quality is not None
-    fit_quality = [(float(f"{x:.3f}"), float(f"{y:.3f}")) for x, y in fit_quality]
+    fit_quality = [PhenotypeFitQuality(p=x, g=y) for x, y in fit_quality_vals]
     yield
+
+
+@lru_cache(maxsize=1)
+def get_fit_quality() -> list[PhenotypeFitQuality]:
+    if fit_quality is None:
+        raise HTTPException(status_code=500, detail="Fit quality not loaded")
+    return fit_quality
 
 
 @lru_cache(maxsize=1)
@@ -145,11 +157,15 @@ def validate_phenotype(
     response_model_exclude_none=True,
 )
 def get_phenotype_summary(
+    *,
     cohort: Annotated[Cohort, Depends(validate_cohort)],
     phenotype_definition: Annotated[ValidPhenotype, Depends(validate_phenotype)],
     n_samples: int = 1000,
+    fit_quality: Annotated[list[PhenotypeFitQuality], Depends(get_fit_quality)],
 ) -> PhenotypeSummary:
-    return get_phenotype_summary_impl(cohort, phenotype_definition).subsample(n_samples)
+    return get_phenotype_summary_impl(
+        cohort, phenotype_definition, fit_quality
+    ).subsample(n_samples)
 
 
 @app.post(
@@ -180,7 +196,7 @@ def get_igwas_results(
 
 
 @app.get("/api/static/fit_quality")
-def get_fit_quality() -> list[tuple[float, float]]:
-    if fit_quality is None:
-        raise HTTPException(status_code=500, detail="Fit quality not loaded")
+def get_fit_quality_endpoint(
+    fit_quality: Annotated[list[PhenotypeFitQuality], Depends(get_fit_quality)],
+) -> list[PhenotypeFitQuality]:
     return fit_quality

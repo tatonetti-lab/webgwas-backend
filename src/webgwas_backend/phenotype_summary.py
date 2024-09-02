@@ -13,6 +13,7 @@ from pandas import Series
 from webgwas_backend.models import (
     ApproximatePhenotypeValues,
     Cohort,
+    PhenotypeFitQuality,
     PhenotypeSummary,
     ValidPhenotype,
 )
@@ -21,7 +22,9 @@ logger = logging.getLogger("uvicorn")
 
 
 def get_phenotype_summary(
-    cohort: Cohort, phenotype_definition: ValidPhenotype
+    cohort: Cohort,
+    phenotype_definition: ValidPhenotype,
+    fit_quality: list[PhenotypeFitQuality],
 ) -> PhenotypeSummary:
     directory = pathlib.Path(cohort.root_directory)
 
@@ -73,5 +76,6 @@ def get_phenotype_summary(
         cohort_name=cohort.name,
         phenotypes=phenotypes,
         rsquared=rsquared,
+        fit_quality=fit_quality,
     )
     return result
