@@ -1,6 +1,7 @@
 dry_run = true
 s3_bucket = "webgwas-ohio"
 sqlite_db = "sqlite:///backend.db"
-n_workers = 1
+n_workers = 2
+fit_quality_file = "prod_data/fit_quality.parquet"
 
 [indirect_gwas]

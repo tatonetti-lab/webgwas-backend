@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 from typing import Any
 
 from dynaconf import Dynaconf
@@ -18,6 +19,7 @@ class Settings(BaseSettings):
     sqlite_db: str
     indirect_gwas: IndirectGWASSettings
     n_workers: int
+    fit_quality_file: Path
 
     @classmethod
     def from_json(cls, json_data: dict[str, Any]) -> Settings:

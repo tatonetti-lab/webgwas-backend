@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 from functools import lru_cache
 from typing import Annotated
 
+import polars as pl
 import webgwas.phenotype_definitions
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -35,12 +36,17 @@ logger.setLevel(logging.DEBUG)
 init_db()
 
 worker: Worker | None = None
+fit_quality: list[tuple[float, float]] | None = None
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # noqa: ARG001
     global worker
     worker = Worker(settings)
+    global fit_quality
+    fit_quality = pl.read_parquet(settings.fit_quality_file).to_pandas().values.tolist()
+    assert fit_quality is not None
+    fit_quality = [(float(f"{x:.3f}"), float(f"{y:.3f}")) for x, y in fit_quality]
     yield
 
 
@@ -171,3 +177,10 @@ def get_igwas_results(
     request_id: str, worker: Annotated[Worker, Depends(get_worker)]
 ) -> WebGWASResult:
     return worker.get_results(request_id)
+
+
+@app.get("/api/static/fit_quality")
+def get_fit_quality() -> list[tuple[float, float]]:
+    if fit_quality is None:
+        raise HTTPException(status_code=500, detail="Fit quality not loaded")
+    return fit_quality
