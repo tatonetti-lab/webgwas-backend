@@ -51,7 +51,7 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
         .values.tolist()
     ]
     global fit_quality
-    fit_quality = [PhenotypeFitQuality(p=x, g=y) for x, y in fit_quality_vals]
+    fit_quality = [PhenotypeFitQuality(p=y, g=x) for x, y in fit_quality_vals]
     yield
 
 
