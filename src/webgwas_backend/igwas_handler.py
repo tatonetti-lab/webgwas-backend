@@ -23,7 +23,8 @@ def get_igwas_coef(
 
     # Load feature data
     features_path = directory.joinpath("phenotype_data.parquet")
-    logger.info(f"Loading data from {features_path}")
+    exists = features_path.exists()
+    logger.info(f"Loading data from {features_path} (exists: {exists})")
     features_df = pl.read_parquet(features_path).to_pandas()
 
     # Assign the target phenotype
