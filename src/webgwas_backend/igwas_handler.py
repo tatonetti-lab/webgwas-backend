@@ -94,8 +94,21 @@ def handle_igwas(
             f"Uploading result to S3. Dry: {dry_run}; {s3_region} - {s3_bucket}"
         )
         logger.debug(f"Output file: {output_file_path}")
-        s3_client = get_s3_client(dry_run, s3_bucket, s3_region)
-        s3_client.upload_file(output_file_path.as_posix(), output_file_path.name)
+        try:
+            s3_client = get_s3_client(dry_run, s3_bucket, s3_region)
+        except Exception as e:
+            logger.error(f"Error getting S3 client: {e}")
+            raise HTTPException(
+                status_code=500, detail=f"Error getting S3 client: {e}"
+            ) from e
+        logger.debug("Doing upload now")
+        try:
+            s3_client.upload_file(output_file_path.as_posix(), output_file_path.name)
+        except Exception as e:
+            logger.error(f"Error uploading file: {e}")
+            raise HTTPException(
+                status_code=500, detail=f"Error uploading file: {e}"
+            ) from e
 
     logger.info("Getting presigned URL")
     presigned_url = s3_client.get_presigned_url(output_file_path.name)
