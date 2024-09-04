@@ -61,6 +61,7 @@ def handle_igwas(
     root_data_directory: pathlib.Path,
     dry_run: bool,
     s3_bucket: str,
+    s3_region: str,
 ) -> WebGWASResult:
     beta_series = get_igwas_coef(request, root_data_directory).drop(
         "const", errors="ignore"
@@ -91,8 +92,8 @@ def handle_igwas(
             ) from e
 
         # Upload the result to S3
-        logger.info("Uploading result to S3")
-        s3_client = get_s3_client(dry_run, s3_bucket)
+        logger.info(f"Uploading result to S3: {s3_region} - {s3_bucket}")
+        s3_client = get_s3_client(dry_run, s3_bucket, s3_region)
         s3_client.upload_file(output_file_path.as_posix(), output_file_path.name)
 
     logger.info("Getting presigned URL")

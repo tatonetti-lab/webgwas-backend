@@ -1,5 +1,6 @@
 dry_run = true
 s3_bucket = "webgwas"
+s3_region = "us-west-1"
 sqlite_db = "sqlite:///backend.db"
 n_workers = 2
 fit_quality_file = "prod_data/fit_quality.parquet"

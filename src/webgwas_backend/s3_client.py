@@ -48,12 +48,12 @@ class S3MockClient(S3Client):
         return self.files[self.bucket][key].as_posix()
 
 
-def get_s3_client(dry_run: bool, bucket: str):
+def get_s3_client(dry_run: bool, bucket: str, region: str):
     if dry_run:
         return S3MockClient(bucket=bucket)
     return S3ProdClient(
         s3_client=boto3.client(
-            "s3", region_name="us-east-2", config=Config(signature_version="v4")
+            "s3", region_name=region, config=Config(signature_version="v4")
         ),
         bucket=bucket,
     )
