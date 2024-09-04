@@ -90,7 +90,10 @@ def handle_igwas(
             ) from e
 
         # Upload the result to S3
-        logger.info(f"Uploading result to S3: {s3_region} - {s3_bucket}")
+        logger.info(
+            f"Uploading result to S3. Dry: {dry_run}; {s3_region} - {s3_bucket}"
+        )
+        logger.debug(f"Output file: {output_file_path}")
         s3_client = get_s3_client(dry_run, s3_bucket, s3_region)
         s3_client.upload_file(output_file_path.as_posix(), output_file_path.name)
 
