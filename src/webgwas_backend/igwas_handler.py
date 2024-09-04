@@ -25,7 +25,11 @@ def get_igwas_coef(
     features_path = directory.joinpath("phenotype_data.parquet")
     exists = features_path.exists()
     logger.info(f"Loading data from {features_path} (exists: {exists})")
-    features_df = pl.read_parquet(features_path).to_pandas()
+    try:
+        features_df = pl.read_parquet(features_path).to_pandas()
+    except Exception as e:
+        logger.error(f"Error loading data from {features_path}: {e}")
+        raise HTTPException(status_code=500, detail=f"Error loading data: {e}") from e
 
     # Assign the target phenotype
     logger.info("Applying phenotype definition to data")
