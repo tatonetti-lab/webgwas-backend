@@ -34,6 +34,7 @@ from webgwas_backend.worker import Worker
 
 logger = logging.getLogger("uvicorn")
 logger.setLevel(logging.DEBUG)
+logger.info(f"Settings: {settings}")
 
 init_db()
 
