@@ -1,9 +1,10 @@
+import logging
 import os
 import pathlib
+import subprocess
 from abc import ABC, abstractmethod
 
-import boto3
-from botocore.config import Config
+logger = logging.getLogger("uvicorn")
 
 
 class S3Client(ABC):
@@ -17,19 +18,40 @@ class S3Client(ABC):
 
 
 class S3ProdClient(S3Client):
-    def __init__(self, s3_client, bucket: str = "webgwas"):
-        self.s3_client = s3_client
+    def __init__(self, bucket: str = "webgwas"):
         self.bucket = bucket
 
     def upload_file(self, local_path, key):
-        self.s3_client.upload_file(local_path, self.bucket, key)
-
-    def get_presigned_url(self, key):
-        return self.s3_client.generate_presigned_url(
-            ClientMethod="get_object",
-            Params={"Bucket": self.bucket, "Key": key},
-            ExpiresIn=60 * 60 * 3,  # 3 hours
+        result = subprocess.run(
+            [
+                "aws",
+                "s3",
+                "cp",
+                local_path,
+                f"s3://{self.bucket}/{key}",
+            ]
         )
+        result.check_returncode()
+
+    def get_presigned_url(self, key) -> str:
+        logger.info(f"Getting presigned URL for {key}")
+        logger.info(
+            f"Running command: aws s3 presign s3://{self.bucket}/{key} --expires-in 3600"
+        )
+        presigned_url_result = subprocess.run(
+            [
+                "aws",
+                "s3",
+                "presign",
+                f"s3://{self.bucket}/{key}",
+                "--expires-in",
+                "3600",
+            ],
+            capture_output=True,
+        )
+        logger.debug(f"Presigned URL result: {presigned_url_result}")
+        presigned_url_result.check_returncode()
+        return presigned_url_result.stdout.decode("utf-8").strip()
 
 
 class S3MockClient(S3Client):
@@ -48,15 +70,7 @@ class S3MockClient(S3Client):
         return self.files[self.bucket][key].as_posix()
 
 
-def get_s3_client(dry_run: bool, bucket: str, region: str):
+def get_s3_client(dry_run: bool, bucket: str):
     if dry_run:
         return S3MockClient(bucket=bucket)
-    return S3ProdClient(
-        s3_client=boto3.client(
-            "s3",
-            region_name=region,
-            config=Config(signature_version="v4"),
-            verify=True,
-        ),
-        bucket=bucket,
-    )
+    return S3ProdClient(bucket=bucket)

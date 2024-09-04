@@ -5,6 +5,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
 
+import boto3
 import polars as pl
 import webgwas.phenotype_definitions
 from fastapi import Depends, FastAPI, HTTPException
@@ -30,6 +31,7 @@ from webgwas_backend.models import (
 from webgwas_backend.phenotype_summary import (
     get_phenotype_summary as get_phenotype_summary_impl,
 )
+from webgwas_backend.s3_client import get_s3_client
 from webgwas_backend.worker import Worker
 
 logger = logging.getLogger("uvicorn")
@@ -211,3 +213,15 @@ def get_fit_quality_endpoint(
     fit_quality: Annotated[list[PhenotypeFitQuality], Depends(get_fit_quality)],
 ) -> list[PhenotypeFitQuality]:
     return fit_quality
+
+
+@app.post("/api/testboto")
+def test_boto():
+    logger.info("Testing boto")
+    s3_client = get_s3_client(dry_run=False, bucket="webgwas")
+    logger.info("Uploading pyproject.toml")
+    s3_client.upload_file("pyproject.toml", "pyproject.toml")
+    logger.info("Getting presigned URL")
+    url = s3_client.get_presigned_url("pyproject.toml")
+    logger.info(f"URL: {url}")
+    return {"success": True}

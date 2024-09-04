@@ -1,6 +1,8 @@
 import logging
 import pathlib
+import subprocess
 import tempfile
+import time
 
 import pandas as pd
 import webgwas.igwas
@@ -73,7 +75,8 @@ def handle_igwas(
     )
     assert gwas_path.exists(), f"GWAS file not found: {gwas_path}"
 
-    with tempfile.TemporaryDirectory() as temp_dir:
+    pathlib.Path("temp").mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(dir="temp") as temp_dir:
         logger.info("Running Indirect GWAS")
         output_file_path = pathlib.Path(temp_dir).joinpath(f"{request.id}.tsv.zst")
         try:
@@ -94,23 +97,38 @@ def handle_igwas(
             f"Uploading result to S3. Dry: {dry_run}; {s3_region} - {s3_bucket}"
         )
         logger.debug(f"Output file: {output_file_path}")
-        try:
-            s3_client = get_s3_client(dry_run, s3_bucket, s3_region)
-        except Exception as e:
-            logger.error(f"Error getting S3 client: {e}")
-            raise HTTPException(
-                status_code=500, detail=f"Error getting S3 client: {e}"
-            ) from e
-        logger.debug("Doing upload now")
-        try:
-            s3_client.upload_file(output_file_path.as_posix(), output_file_path.name)
-        except Exception as e:
-            logger.error(f"Error uploading file: {e}")
-            raise HTTPException(
-                status_code=500, detail=f"Error uploading file: {e}"
-            ) from e
 
-    logger.info("Getting presigned URL")
-    presigned_url = s3_client.get_presigned_url(output_file_path.name)
+        logger.info("Getting presigned URL")
+        try:
+            result = subprocess.run(
+                [
+                    "aws",
+                    "s3",
+                    "cp",
+                    output_file_path.as_posix(),
+                    f"s3://{s3_bucket}/{output_file_path.name}",
+                ],
+                capture_output=True,
+            )
+            result.check_returncode()
+            logger.info("Uploading result to S3")
+            presigned_url_result = subprocess.run(
+                [
+                    "aws",
+                    "s3",
+                    "presign",
+                    f"s3://{s3_bucket}/{output_file_path.name}",
+                    "--expires-in",
+                    "3600",
+                ],
+                capture_output=True,
+            )
+            presigned_url = presigned_url_result.stdout.decode("utf-8").strip()
+            logger.info(f"Presigned URL: {presigned_url}")
+        except Exception as e:
+            logger.error(f"Error getting presigned URL: {e}")
+            raise HTTPException(
+                status_code=500, detail=f"Error getting presigned URL: {e}"
+            ) from e
     logger.debug(f"Presigned URL: {presigned_url}")
     return WebGWASResult(request_id=request.id, url=presigned_url, status="done")
