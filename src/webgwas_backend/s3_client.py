@@ -53,7 +53,10 @@ def get_s3_client(dry_run: bool, bucket: str, region: str):
         return S3MockClient(bucket=bucket)
     return S3ProdClient(
         s3_client=boto3.client(
-            "s3", region_name=region, config=Config(signature_version="v4")
+            "s3",
+            region_name=region,
+            config=Config(signature_version="v4"),
+            verify=True,
         ),
         bucket=bucket,
     )
