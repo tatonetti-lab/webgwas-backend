@@ -28,6 +28,7 @@ def get_igwas_coef(
     try:
         features_df = pl.read_parquet(features_path).to_pandas()
     except Exception as e:
+        logger.info(f"Error loading data from {features_path}: {e}")
         logger.error(f"Error loading data from {features_path}: {e}")
         raise HTTPException(status_code=500, detail=f"Error loading data: {e}") from e
 
