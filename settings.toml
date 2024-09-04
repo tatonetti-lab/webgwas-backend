@@ -3,5 +3,6 @@ s3_bucket = "webgwas"
 sqlite_db = "sqlite:///backend.db"
 n_workers = 2
 fit_quality_file = "prod_data/fit_quality.parquet"
+root_data_directory = "prod_data"
 
 [indirect_gwas]

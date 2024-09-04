@@ -1,4 +1,5 @@
 import logging
+import pathlib
 from concurrent.futures import Future, ProcessPoolExecutor
 from multiprocessing import Manager
 
@@ -15,6 +16,7 @@ class Worker:
     def __init__(self, settings: Settings):
         self.s3_dry_run = settings.dry_run
         self.s3_bucket = settings.s3_bucket
+        self.root_data_directory = settings.root_data_directory
 
         self.manager = Manager()
         self.lock = self.manager.Lock()
@@ -27,15 +29,21 @@ class Worker:
             self.results[request.id] = self.executor.submit(
                 self.handle_request,
                 request,
+                self.root_data_directory,
                 self.s3_dry_run,
                 self.s3_bucket,
             )
         logger.info(f"Queued request: {request.id}")
 
     @staticmethod
-    def handle_request(request: WebGWASRequestID, dry_run: bool, s3_bucket: str):
+    def handle_request(
+        request: WebGWASRequestID,
+        root_data_directory: pathlib.Path,
+        dry_run: bool,
+        s3_bucket: str,
+    ):
         try:
-            return handle_igwas(request, dry_run, s3_bucket)
+            return handle_igwas(request, root_data_directory, dry_run, s3_bucket)
         except Exception as e:
             return WebGWASResult(
                 request_id=request.id, status="error", error_msg=f"{e}"
@@ -67,7 +75,9 @@ class TestWorker(Worker):
 
     def submit(self, request: WebGWASRequestID):
         logger.info(f"Submitting request: {request}")
-        result = self.handle_request(request, self.s3_dry_run, self.s3_bucket)
+        result = self.handle_request(
+            request, self.root_data_directory, self.s3_dry_run, self.s3_bucket
+        )
         self.id_to_result[request.id] = result
         logger.info(f"Queued request: {request.id}")
 

@@ -16,8 +16,10 @@ from webgwas_backend.s3_client import get_s3_client
 logger = logging.getLogger("uvicorn")
 
 
-def get_igwas_coef(request: WebGWASRequestID) -> Series:
-    directory = pathlib.Path(request.cohort.root_directory)
+def get_igwas_coef(
+    request: WebGWASRequestID, root_data_directory: pathlib.Path
+) -> Series:
+    directory = root_data_directory.joinpath(request.cohort.root_directory)
 
     # Load feature data
     logger.info("Loading data")
@@ -49,14 +51,21 @@ def get_igwas_coef(request: WebGWASRequestID) -> Series:
 
 
 def handle_igwas(
-    request: WebGWASRequestID, dry_run: bool, s3_bucket: str
+    request: WebGWASRequestID,
+    root_data_directory: pathlib.Path,
+    dry_run: bool,
+    s3_bucket: str,
 ) -> WebGWASResult:
-    beta_series = get_igwas_coef(request).drop("const", errors="ignore")
-    cov_path = pathlib.Path(request.cohort.root_directory).joinpath(
+    beta_series = get_igwas_coef(request, root_data_directory).drop(
+        "const", errors="ignore"
+    )
+    cov_path = request.cohort.get_root_path(root_data_directory).joinpath(
         "phenotypic_covariance.csv"
     )
     covariance_matrix = pd.read_csv(cov_path, index_col=0)
-    gwas_path = pathlib.Path(request.cohort.root_directory).joinpath("gwas.parquet")
+    gwas_path = request.cohort.get_root_path(root_data_directory).joinpath(
+        "gwas.parquet"
+    )
     assert gwas_path.exists(), f"GWAS file not found: {gwas_path}"
 
     with tempfile.TemporaryDirectory() as temp_dir:

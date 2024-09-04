@@ -1,7 +1,8 @@
 import logging
-from collections.abc import Generator
+from collections.abc import Generator, Sequence
 from contextlib import asynccontextmanager
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated
 
 import polars as pl
@@ -76,6 +77,11 @@ def get_session(engine: Annotated[Engine, Depends(get_engine)]) -> Generator[Ses
         yield session
 
 
+@lru_cache(maxsize=1)
+def get_root_data_directory() -> Path:
+    return Path("prod_data")
+
+
 app = FastAPI(lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
@@ -87,7 +93,9 @@ app.add_middleware(
 
 
 def validate_cohort(
-    *, session: Annotated[Session, Depends(get_session)], cohort_id: int
+    *,
+    session: Annotated[Session, Depends(get_session)],
+    cohort_id: int,
 ) -> Cohort:
     cohort = session.get(Cohort, cohort_id)
     if cohort is None:
@@ -100,8 +108,9 @@ def validate_cohort(
     response_model=list[CohortResponse],
     response_model_exclude_none=True,
 )
-def get_cohorts(session: Annotated[Session, Depends(get_session)]):
-    return session.exec(select(Cohort)).all()
+def get_cohorts(session: Annotated[Session, Depends(get_session)]) -> Sequence[Cohort]:
+    cohorts = session.exec(select(Cohort)).all()
+    return cohorts
 
 
 @app.get(
@@ -162,9 +171,10 @@ def get_phenotype_summary(
     phenotype_definition: Annotated[ValidPhenotype, Depends(validate_phenotype)],
     n_samples: int = 1000,
     fit_quality: Annotated[list[PhenotypeFitQuality], Depends(get_fit_quality)],
+    root_data_directory: Annotated[Path, Depends(get_root_data_directory)],
 ) -> PhenotypeSummary:
     return get_phenotype_summary_impl(
-        cohort, phenotype_definition, fit_quality
+        cohort, phenotype_definition, fit_quality, root_data_directory
     ).subsample(n_samples)
 
 

@@ -24,6 +24,9 @@ class Cohort(CohortResponse, SQLModel, table=True):
             for feature in self.features
         ]
 
+    def get_root_path(self, data_root: Path) -> Path:
+        return data_root.joinpath(self.root_directory)
+
 
 class FeatureResponse(SQLModel):
     id: int | None = Field(default=None, primary_key=True)

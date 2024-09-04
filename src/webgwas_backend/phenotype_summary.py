@@ -25,8 +25,9 @@ def get_phenotype_summary(
     cohort: Cohort,
     phenotype_definition: ValidPhenotype,
     fit_quality: list[PhenotypeFitQuality],
+    root_data_directory: pathlib.Path,
 ) -> PhenotypeSummary:
-    directory = pathlib.Path(cohort.root_directory)
+    directory = cohort.get_root_path(root_data_directory)
 
     # Load feature data
     logger.info("Loading data")
