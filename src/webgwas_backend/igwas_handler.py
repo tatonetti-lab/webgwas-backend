@@ -3,7 +3,6 @@ import pathlib
 import tempfile
 
 import pandas as pd
-import polars as pl
 import webgwas.igwas
 import webgwas.phenotype_definitions
 import webgwas.regression
@@ -26,11 +25,10 @@ def get_igwas_coef(
     exists = features_path.exists()
     logger.info(f"Loading data from {features_path} (exists: {exists})")
     try:
-        features_df = pl.read_parquet(features_path).to_pandas()
+        features_df = pd.read_parquet(features_path)
     except Exception as e:
-        logger.info(f"Error loading data from {features_path}: {e}")
         logger.error(f"Error loading data from {features_path}: {e}")
-        raise HTTPException(status_code=500, detail=f"Error loading data: {e}") from e
+        raise e
 
     # Assign the target phenotype
     logger.info("Applying phenotype definition to data")
