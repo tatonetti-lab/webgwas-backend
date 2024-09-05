@@ -61,7 +61,6 @@ def handle_igwas(
     root_data_directory: pathlib.Path,
     dry_run: bool,
     s3_bucket: str,
-    s3_region: str,
 ) -> WebGWASResult:
     beta_series = get_igwas_coef(request, root_data_directory).drop(
         "const", errors="ignore"
@@ -93,42 +92,17 @@ def handle_igwas(
             ) from e
 
         # Upload the result to S3
-        logger.info(
-            f"Uploading result to S3. Dry: {dry_run}; {s3_region} - {s3_bucket}"
-        )
-        logger.debug(f"Output file: {output_file_path}")
-
-        logger.info("Getting presigned URL")
+        s3_client = get_s3_client(dry_run, s3_bucket)
         try:
-            result = subprocess.run(
-                [
-                    "aws",
-                    "s3",
-                    "cp",
-                    output_file_path.as_posix(),
-                    f"s3://{s3_bucket}/{output_file_path.name}",
-                ],
-                capture_output=True,
-            )
-            result.check_returncode()
-            logger.info("Uploading result to S3")
-            presigned_url_result = subprocess.run(
-                [
-                    "aws",
-                    "s3",
-                    "presign",
-                    f"s3://{s3_bucket}/{output_file_path.name}",
-                    "--expires-in",
-                    "3600",
-                ],
-                capture_output=True,
-            )
-            presigned_url = presigned_url_result.stdout.decode("utf-8").strip()
-            logger.info(f"Presigned URL: {presigned_url}")
+            logger.info(f"Uploading result to S3. (dry={dry_run})")
+            s3_client.upload_file(output_file_path.as_posix(), output_file_path.name)
+            logger.info("Getting presigned URL")
+            presigned_url = s3_client.get_presigned_url(output_file_path.name)
         except Exception as e:
             logger.error(f"Error getting presigned URL: {e}")
             raise HTTPException(
                 status_code=500, detail=f"Error getting presigned URL: {e}"
             ) from e
     logger.debug(f"Presigned URL: {presigned_url}")
+    logger.info("Done")
     return WebGWASResult(request_id=request.id, url=presigned_url, status="done")
