@@ -16,6 +16,7 @@ class IndirectGWASSettings(BaseModel):
 class Settings(BaseSettings):
     dry_run: bool
     s3_bucket: str
+    s3_result_path: str
     sqlite_db: str
     indirect_gwas: IndirectGWASSettings
     n_workers: int

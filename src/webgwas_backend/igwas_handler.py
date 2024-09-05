@@ -59,6 +59,7 @@ def handle_igwas(
     root_data_directory: pathlib.Path,
     dry_run: bool,
     s3_bucket: str,
+    s3_result_path: str,
 ) -> WebGWASResult:
     beta_series = get_igwas_coef(request, root_data_directory).drop(
         "const", errors="ignore"
@@ -93,9 +94,10 @@ def handle_igwas(
         s3_client = get_s3_client(dry_run, s3_bucket)
         try:
             logger.info(f"Uploading result to S3. (dry={dry_run})")
-            s3_client.upload_file(output_file_path.as_posix(), output_file_path.name)
+            key = f"{s3_result_path}/{output_file_path.name}"
+            s3_client.upload_file(output_file_path.as_posix(), key)
             logger.info("Getting presigned URL")
-            presigned_url = s3_client.get_presigned_url(output_file_path.name)
+            presigned_url = s3_client.get_presigned_url(key)
         except Exception as e:
             logger.error(f"Error getting presigned URL: {e}")
             raise HTTPException(
