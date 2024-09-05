@@ -1,8 +1,6 @@
 import logging
 import pathlib
-import subprocess
 import tempfile
-import time
 
 import pandas as pd
 import webgwas.igwas
@@ -14,7 +12,7 @@ from pandas import Series
 from webgwas_backend.models import WebGWASRequestID, WebGWASResult
 from webgwas_backend.s3_client import get_s3_client
 
-logger = logging.getLogger("uvicorn")
+logger = logging.getLogger(__name__)
 
 
 def get_igwas_coef(

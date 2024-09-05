@@ -18,7 +18,7 @@ from webgwas_backend.models import (
     ValidPhenotype,
 )
 
-logger = logging.getLogger("uvicorn")
+logger = logging.getLogger(__name__)
 
 
 def get_phenotype_summary(

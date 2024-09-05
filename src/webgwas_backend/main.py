@@ -5,11 +5,11 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Annotated
 
-import boto3
 import polars as pl
 import webgwas.phenotype_definitions
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from rich.logging import RichHandler
 from sqlalchemy import Engine
 from sqlmodel import Session, select
 from webgwas.phenotype_definitions import Field, KnowledgeBase
@@ -34,9 +34,7 @@ from webgwas_backend.phenotype_summary import (
 from webgwas_backend.s3_client import get_s3_client
 from webgwas_backend.worker import Worker
 
-logger = logging.getLogger("uvicorn")
-logger.setLevel(logging.DEBUG)
-logger.info(f"Settings: {settings}")
+logger = logging.getLogger(__name__)
 
 init_db()
 
@@ -46,6 +44,10 @@ fit_quality: list[PhenotypeFitQuality] | None = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # noqa: ARG001
+    logging.basicConfig(
+        level=logging.DEBUG, format="%(message)s", handlers=[RichHandler()]
+    )
+    logger.debug(f"Settings: {settings}")
     global worker
     worker = Worker(settings)
     fit_quality_vals = [

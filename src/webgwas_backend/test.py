@@ -8,7 +8,7 @@ from fastapi import FastAPI
 
 from webgwas_backend.s3_client import get_s3_client
 
-logger = logging.getLogger("uvicorn")
+logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
 
 

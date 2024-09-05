@@ -4,7 +4,7 @@ import pathlib
 import subprocess
 from abc import ABC, abstractmethod
 
-logger = logging.getLogger("uvicorn")
+logger = logging.getLogger(__name__)
 
 
 class S3Client(ABC):
@@ -29,15 +29,13 @@ class S3ProdClient(S3Client):
                 "cp",
                 local_path,
                 f"s3://{self.bucket}/{key}",
-            ]
+            ],
+            capture_output=True,
         )
+        logger.debug(f"Upload result: {result}")
         result.check_returncode()
 
     def get_presigned_url(self, key) -> str:
-        logger.info(f"Getting presigned URL for {key}")
-        logger.info(
-            f"Running command: aws s3 presign s3://{self.bucket}/{key} --expires-in 3600"
-        )
         presigned_url_result = subprocess.run(
             [
                 "aws",

@@ -9,7 +9,7 @@ from webgwas_backend.config import Settings
 from webgwas_backend.igwas_handler import handle_igwas
 from webgwas_backend.models import WebGWASRequestID, WebGWASResult
 
-logger = logging.getLogger("uvicorn")
+logger = logging.getLogger(__name__)
 
 
 class Worker:
