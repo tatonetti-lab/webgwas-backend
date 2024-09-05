@@ -60,7 +60,10 @@ class S3MockClient(S3Client):
         self.bucket = bucket
 
     def upload_file(self, local_path, key):
-        pathlib.Path(local_path).rename(self.temp_dir / key)
+        start_path = pathlib.Path(local_path)
+        end_path = self.temp_dir.joinpath(key)
+        end_path.parent.mkdir(exist_ok=True)
+        start_path.rename(self.temp_dir / key)
         bucket_keys = self.files.setdefault(self.bucket, {})
         bucket_keys[key] = self.temp_dir / key
 
