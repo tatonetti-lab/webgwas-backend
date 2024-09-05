@@ -215,15 +215,3 @@ def get_fit_quality_endpoint(
     fit_quality: Annotated[list[PhenotypeFitQuality], Depends(get_fit_quality)],
 ) -> list[PhenotypeFitQuality]:
     return fit_quality
-
-
-@app.post("/api/testboto")
-def test_boto():
-    logger.info("Testing boto")
-    s3_client = get_s3_client(dry_run=False, bucket="webgwas")
-    logger.info("Uploading pyproject.toml")
-    s3_client.upload_file("pyproject.toml", "pyproject.toml")
-    logger.info("Getting presigned URL")
-    url = s3_client.get_presigned_url("pyproject.toml")
-    logger.info(f"URL: {url}")
-    return {"success": True}
