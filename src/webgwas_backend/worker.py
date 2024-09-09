@@ -64,15 +64,21 @@ class Worker:
     def get_results(self, request_id: str) -> WebGWASResult:
         with self.lock:
             future = self.results.get(request_id)
-            if future is None:
-                raise HTTPException(status_code=404, detail="Request not found")
-            if future.running():
+        if future is None:
+            raise HTTPException(status_code=404, detail="Request not found")
+        match future._state:
+            case "PENDING":
                 return WebGWASResult(request_id=request_id, status="queued")
-            if future.done():
+            case "RUNNING":
+                return WebGWASResult(request_id=request_id, status="queued")
+            case "FINISHED":
                 return future.result()
-            if future.cancelled():
+            case "CANCELLED":
                 raise HTTPException(status_code=400, detail="Request cancelled")
-        raise HTTPException(status_code=500, detail=f"Unknown state: {future}")
+            case _:
+                raise HTTPException(
+                    status_code=500, detail=f"Unknown state: {future._state}"
+                )
 
     def shutdown(self):
         self.executor.shutdown(wait=True, cancel_futures=True)
