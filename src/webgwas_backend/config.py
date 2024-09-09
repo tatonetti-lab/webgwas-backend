@@ -29,6 +29,7 @@ class Settings(BaseSettings):
     n_workers: int
     fit_quality_file: Path
     root_data_directory: Path
+    cache_capacity: int
 
     @classmethod
     def from_json(cls, json_data: dict[str, Any]) -> Settings:
