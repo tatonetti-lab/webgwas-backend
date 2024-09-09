@@ -70,7 +70,9 @@ class Worker:
                 return WebGWASResult(request_id=request_id, status="queued")
             if future.done():
                 return future.result()
-        raise HTTPException(status_code=500, detail=f"Internal error: {future}")
+            if future.cancelled():
+                raise HTTPException(status_code=400, detail="Request cancelled")
+        raise HTTPException(status_code=500, detail=f"Unknown state: {future}")
 
     def shutdown(self):
         self.executor.shutdown(wait=True, cancel_futures=True)
