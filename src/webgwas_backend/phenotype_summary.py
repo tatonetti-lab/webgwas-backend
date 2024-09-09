@@ -30,12 +30,12 @@ def get_phenotype_summary(
     directory = cohort.get_root_path(root_data_directory)
 
     # Load feature data
-    logger.info("Loading data")
+    logger.debug("Loading data")
     features_path = directory.joinpath("phenotype_data.parquet")
     features_df = pl.read_parquet(features_path).to_pandas()
 
     # Assign the target phenotype
-    logger.info("Applying phenotype definition to data")
+    logger.debug("Applying phenotype definition to data")
     target_phenotype = webgwas.phenotype_definitions.apply_definition_pandas(
         nodes=phenotype_definition.valid_nodes, df=features_df
     )
@@ -43,13 +43,13 @@ def get_phenotype_summary(
     logger.debug(f"Target phenotype: {target_phenotype}")
 
     # Load left inverse
-    logger.info("Loading left inverse")
+    logger.debug("Loading left inverse")
     left_inverse_path = directory.joinpath("phenotype_left_inverse.parquet")
     left_inverse_df = pd.read_parquet(left_inverse_path).T
     logger.debug(f"Left inverse: {left_inverse_df}")
 
     # Regress the target phenotype against the feature phenotypes
-    logger.info("Regressing phenotype against features")
+    logger.debug("Regressing phenotype against features")
     beta_series = (
         webgwas.regression.regress_left_inverse(target_phenotype, left_inverse_df)
         .round(5)
