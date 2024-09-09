@@ -94,6 +94,7 @@ class TestWorker(Worker):
     def __init__(self, settings: Settings):
         self.s3_dry_run = settings.dry_run
         self.s3_bucket = settings.s3_bucket
+        self.s3_result_path = settings.s3_result_path
         self.id_to_result: dict[str, WebGWASResult] = {}
 
     def submit(self, request: WebGWASRequestID):
@@ -103,6 +104,7 @@ class TestWorker(Worker):
             self.root_data_directory,
             self.s3_dry_run,
             self.s3_bucket,
+            self.s3_result_path,
         )
         self.id_to_result[request.id] = result
         logger.info(f"Queued request: {request.id}")
