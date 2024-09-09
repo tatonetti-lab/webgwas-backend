@@ -131,11 +131,16 @@ def get_session_override():
 @pytest.fixture
 def client():
     settings = Settings(
+        log_level="DEBUG",
         dry_run=True,
         s3_bucket="TEST",
+        s3_result_path="TEST",
         sqlite_db=":memory:",
-        n_workers=2,
+        n_workers=1,
+        fit_quality_file=pathlib.Path(":memory:"),
+        root_data_directory=pathlib.Path(":memory:"),
         indirect_gwas=IndirectGWASSettings(),
+        cache_capacity=1,
     )
     worker = TestWorker(settings)
 

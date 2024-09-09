@@ -95,6 +95,7 @@ class TestWorker(Worker):
         self.s3_dry_run = settings.dry_run
         self.s3_bucket = settings.s3_bucket
         self.s3_result_path = settings.s3_result_path
+        self.root_data_directory = settings.root_data_directory
         self.id_to_result: dict[str, WebGWASResult] = {}
 
     def submit(self, request: WebGWASRequestID):
