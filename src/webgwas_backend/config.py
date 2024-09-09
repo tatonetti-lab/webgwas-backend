@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import logging
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 from dynaconf import Dynaconf
 from pydantic import BaseModel
@@ -18,6 +18,9 @@ class IndirectGWASSettings(BaseModel):
 
 
 class Settings(BaseSettings):
+    log_level: (
+        Literal["DEBUG"] | Literal["INFO"] | Literal["WARNING"] | Literal["ERROR"]
+    )
     dry_run: bool
     s3_bucket: str
     s3_result_path: str
@@ -46,7 +49,14 @@ settings = Settings.from_dynaconf()
 
 
 def init_logging() -> None:
-    logging.basicConfig(
-        level=logging.DEBUG, format="%(message)s", handlers=[RichHandler()]
-    )
+    match settings.log_level:
+        case "DEBUG":
+            level = logging.DEBUG
+        case "INFO":
+            level = logging.INFO
+        case "WARNING":
+            level = logging.WARNING
+        case "ERROR":
+            level = logging.ERROR
+    logging.basicConfig(level=level, format="%(message)s", handlers=[RichHandler()])
     logger.debug(f"Settings: {settings}")
