@@ -54,6 +54,7 @@ async def lifespan(app: FastAPI):  # noqa: ARG001
     global fit_quality
     fit_quality = [PhenotypeFitQuality(p=y, g=x) for x, y in fit_quality_vals]
     yield
+    worker.shutdown()
 
 
 @lru_cache(maxsize=1)
