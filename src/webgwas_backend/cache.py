@@ -28,7 +28,7 @@ class LRUResultsCache(Generic[K, V]):
     def __contains__(self, key: K) -> bool:
         return key in self.cache
 
-    def get(self, key: K, default: V = None) -> V:
+    def get(self, key: K, default: V | None = None) -> V | None:
         if key in self.cache:
             self.cache.move_to_end(key)
             return self.cache[key]
