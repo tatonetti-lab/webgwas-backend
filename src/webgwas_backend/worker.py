@@ -5,7 +5,7 @@ from multiprocessing import Manager
 
 from fastapi import HTTPException
 
-from webgwas_backend.config import Settings
+from webgwas_backend.config import Settings, init_logging
 from webgwas_backend.igwas_handler import handle_igwas
 from webgwas_backend.models import WebGWASRequestID, WebGWASResult
 
@@ -22,7 +22,9 @@ class Worker:
         self.manager = Manager()
         self.lock = self.manager.Lock()
         self.results: dict[str, Future[WebGWASResult]] = dict()
-        self.executor = ProcessPoolExecutor(max_workers=settings.n_workers)
+        self.executor = ProcessPoolExecutor(
+            initializer=init_logging, max_workers=settings.n_workers
+        )
 
     def submit(self, request: WebGWASRequestID):
         logger.info(f"Submitting request: {request}")

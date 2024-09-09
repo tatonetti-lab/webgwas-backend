@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import json
+import logging
 from pathlib import Path
 from typing import Any
 
 from dynaconf import Dynaconf
 from pydantic import BaseModel
 from pydantic_settings import BaseSettings
+from rich.logging import RichHandler
+
+logger = logging.getLogger(__name__)
 
 
 class IndirectGWASSettings(BaseModel):
@@ -39,3 +43,10 @@ class Settings(BaseSettings):
 
 
 settings = Settings.from_dynaconf()
+
+
+def init_logging() -> None:
+    logging.basicConfig(
+        level=logging.DEBUG, format="%(message)s", handlers=[RichHandler()]
+    )
+    logger.debug(f"Settings: {settings}")

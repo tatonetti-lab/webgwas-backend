@@ -9,12 +9,11 @@ import polars as pl
 import webgwas.phenotype_definitions
 from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from rich.logging import RichHandler
 from sqlalchemy import Engine
 from sqlmodel import Session, select
 from webgwas.phenotype_definitions import Field, KnowledgeBase
 
-from webgwas_backend.config import settings
+from webgwas_backend.config import init_logging, settings
 from webgwas_backend.database import engine, init_db
 from webgwas_backend.models import (
     Cohort,
@@ -31,7 +30,6 @@ from webgwas_backend.models import (
 from webgwas_backend.phenotype_summary import (
     get_phenotype_summary as get_phenotype_summary_impl,
 )
-from webgwas_backend.s3_client import get_s3_client
 from webgwas_backend.worker import Worker
 
 logger = logging.getLogger(__name__)
@@ -44,10 +42,7 @@ fit_quality: list[PhenotypeFitQuality] | None = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):  # noqa: ARG001
-    logging.basicConfig(
-        level=logging.DEBUG, format="%(message)s", handlers=[RichHandler()]
-    )
-    logger.debug(f"Settings: {settings}")
+    init_logging()
     global worker
     worker = Worker(settings)
     fit_quality_vals = [
