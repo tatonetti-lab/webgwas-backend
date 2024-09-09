@@ -23,30 +23,30 @@ def get_igwas_coef(
     # Load feature data
     features_path = directory.joinpath("phenotype_data.parquet")
     exists = features_path.exists()
-    logger.info(f"Loading data from {features_path} (exists: {exists})")
+    logger.debug(f"Loading phenotype data from {features_path} (exists: {exists})")
     try:
         features_df = pd.read_parquet(features_path)
     except Exception as e:
-        logger.error(f"Error loading data from {features_path}: {e}")
+        logger.error(f"Error loading phenotype data: {e}")
         raise e
 
     # Assign the target phenotype
-    logger.info("Applying phenotype definition to data")
+    logger.debug("Applying phenotype definition to data")
     target_phenotype = webgwas.phenotype_definitions.apply_definition_pandas(
         nodes=request.phenotype_definition.valid_nodes, df=features_df
     )
     assert isinstance(target_phenotype, Series)
     del features_df  # Free up memory
-    logger.debug(f"Target phenotype: {target_phenotype}")
+    # logger.debug(f"Target phenotype: {target_phenotype}")
 
     # Load left inverse
-    logger.info("Loading left inverse")
+    logger.debug("Loading left inverse")
     left_inverse_path = directory.joinpath("phenotype_left_inverse.parquet")
     left_inverse_df = pd.read_parquet(left_inverse_path).T
-    logger.debug(f"Left inverse: {left_inverse_df}")
+    # logger.debug(f"Left inverse: {left_inverse_df}")
 
     # Regress the target phenotype against the feature phenotypes
-    logger.info("Regressing phenotype against features")
+    logger.debug("Regressing phenotype against features")
     beta_series = webgwas.regression.regress_left_inverse(
         target_phenotype, left_inverse_df
     )
@@ -75,7 +75,7 @@ def handle_igwas(
 
     pathlib.Path("temp").mkdir(exist_ok=True)
     with tempfile.TemporaryDirectory(dir="temp") as temp_dir:
-        logger.info("Running Indirect GWAS")
+        logger.debug("Running Indirect GWAS")
         output_file_path = pathlib.Path(temp_dir).joinpath(f"{request.id}.tsv.zst")
         try:
             webgwas.igwas.igwas_prod(
@@ -93,10 +93,10 @@ def handle_igwas(
         # Upload the result to S3
         s3_client = get_s3_client(dry_run, s3_bucket)
         try:
-            logger.info(f"Uploading result to S3. (dry={dry_run})")
+            logger.debug(f"Uploading result to S3. (dry={dry_run})")
             key = f"{s3_result_path}/{output_file_path.name}"
             s3_client.upload_file(output_file_path.as_posix(), key)
-            logger.info("Getting presigned URL")
+            logger.debug("Getting presigned URL")
             presigned_url = s3_client.get_presigned_url(key)
         except Exception as e:
             logger.error(f"Error getting presigned URL: {e}")
@@ -104,5 +104,5 @@ def handle_igwas(
                 status_code=500, detail=f"Error getting presigned URL: {e}"
             ) from e
     logger.debug(f"Presigned URL: {presigned_url}")
-    logger.info("Done")
+    logger.debug("Done")
     return WebGWASResult(request_id=request.id, url=presigned_url, status="done")

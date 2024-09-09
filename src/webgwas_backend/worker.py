@@ -1,5 +1,6 @@
 import logging
 import pathlib
+import time
 from concurrent.futures import Future, ProcessPoolExecutor
 from multiprocessing import Manager
 
@@ -27,7 +28,7 @@ class Worker:
         )
 
     def submit(self, request: WebGWASRequestID):
-        logger.info(f"Submitting request: {request}")
+        logger.debug(f"Submitting request: {request}")
         with self.lock:
             self.results[request.id] = self.executor.submit(
                 self.handle_request,
@@ -37,7 +38,7 @@ class Worker:
                 self.s3_bucket,
                 self.s3_result_path,
             )
-        logger.info(f"Queued request: {request.id}")
+        logger.debug(f"Queued request: {request.id}")
 
     @staticmethod
     def handle_request(
@@ -47,10 +48,14 @@ class Worker:
         s3_bucket: str,
         s3_result_path: str,
     ):
+        start_time = time.time()
         try:
-            return handle_igwas(
+            result = handle_igwas(
                 request, root_data_directory, dry_run, s3_bucket, s3_result_path
             )
+            end_time = time.time()
+            logger.info(f"Request took {end_time - start_time} seconds")
+            return result
         except Exception as e:
             return WebGWASResult(
                 request_id=request.id, status="error", error_msg=f"{e}"
