@@ -1,6 +1,0 @@
-{
-    "cohort_name": "cohort1",
-    "feature_names": ["feature1", "feature2", "feature3"],
-    "gwas_extension": ".tsv.zst",
-    "num_covar": 12
-}
