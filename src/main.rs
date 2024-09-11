@@ -52,7 +52,7 @@ async fn main() {
         .route("/api/cohorts", get(get_cohorts))
         .route("/api/features", get(get_features))
         .route("/api/phenotype", put(validate_phenotype))
-        .route("/api/phenotype_summary", get(get_phenotype_summary))
+        .route("/api/phenotype_summary", post(get_phenotype_summary))
         .route("/api/igwas", post(post_igwas))
         .route("/api/igwas/results/:request_id", get(get_igwas_results))
         .layer(CorsLayer::permissive())
