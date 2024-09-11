@@ -1,0 +1,29 @@
+[package]
+name = "webgwas-backend-rs"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "webgwas_backend_rs"
+crate-type = ["lib"]
+
+[dependencies]
+anyhow = "1.0.87"
+aws-config = { version = "1.5.6", features = ["behavior-version-latest"] }
+aws-sdk-s3 = "1.49.0"
+axum = { version = "0.7.5", features = ["macros", "query"] }
+axum-macros = "0.4.1"
+blas-src = { version = "0.10.0", features = ["blis"] }
+env_logger = "0.11.5"
+itertools = "0.13.0"
+log = "0.4.22"
+ndarray = { version = "0.15.6", features = ["blas", "std"] }
+polars = { version = "0.43.0", features = ["performant", "serde", "parquet", "json", "ndarray", "polars-io", "zip_with"] }
+serde = "1.0.210"
+serde_json = "1.0.128"
+sqlx = { version = "0.8.2", features = ["runtime-tokio", "sqlite"] }
+tokio = { version = "1.40.0", features = ["macros", "rt-multi-thread"] }
+toml = "0.8.19"
+tower-http = { version = "0.5.2", features = ["cors"] }
+uuid = { version = "1.10.0", features = ["serde", "v4"] }
+webgwas = { git = "https://github.com/zietzm/webgwas.git", version = "0.1.9" }
