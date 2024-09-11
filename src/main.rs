@@ -195,7 +195,7 @@ async fn get_phenotype_summary(
     let rss = (&phenotype_pred - &phenotype_ndarray).map(|x| x * x).sum();
     let mean = phenotype_pred.mean().context("Failed to calculate mean")?;
     let tss = (phenotype_ndarray - mean).map(|x| x * x).sum();
-    let r2 = rss / tss;
+    let r2 = 1.0 - (rss / tss);
     let duration = start.elapsed();
     debug!("Fit quality took {:?}", duration);
     let fit_quality_reference = state
