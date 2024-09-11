@@ -19,11 +19,10 @@ use std::{iter::repeat, sync::Arc};
 use tokio::time::Instant;
 use tower_http::cors::CorsLayer;
 use uuid::Uuid;
-use webgwas_backend_rs::config::Settings;
 use webgwas_backend_rs::models::{
-    ApproximatePhenotypeValues, Cohort, Feature, GetFeaturesRequest, PhenotypeSummary,
-    ValidPhenotypeResponse, WebGWASRequest, WebGWASRequestId, WebGWASResponse, WebGWASResult,
-    WebGWASResultStatus,
+    ApproximatePhenotypeValues, Cohort, Feature, GetFeaturesRequest, PhenotypeFitQuality,
+    PhenotypeSummary, ValidPhenotypeResponse, WebGWASRequest, WebGWASRequestId, WebGWASResponse,
+    WebGWASResult, WebGWASResultStatus,
 };
 use webgwas_backend_rs::phenotype_definitions;
 use webgwas_backend_rs::regression::regress;
@@ -80,8 +79,10 @@ async fn get_features(
     request: Query<GetFeaturesRequest>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<Feature>>, WebGWASError> {
+    let request = request.0;
+    debug!("Fetching features for cohort {}", request.cohort_id);
     let result = sqlx::query_as::<_, Feature>(
-        "SELECT id, code, name, type as node_type FROM feature WHERE cohort_id = ?",
+        "SELECT id, code, name, type as node_type, cohort_id FROM feature WHERE cohort_id = $1",
     )
     .bind(request.cohort_id)
     .fetch_all(&state.db)
