@@ -15,8 +15,6 @@ pub enum LogLevel {
 
 #[derive(Deserialize, Debug)]
 pub struct Settings {
-    pub dry_run: bool,
-    pub num_workers: usize,
     pub cache_capacity: usize,
     pub s3_region: String,
     pub s3_bucket: String,
