@@ -1,0 +1,9 @@
+cache_capacity = 1000
+s3_region = "us-west-1"
+s3_bucket = "webgwas"
+s3_result_path = "results"
+sqlite_db_path = "sqlite://backend.db"
+fit_quality_file = "../webgwas-backend/prod_data/fit_quality.parquet"
+cohort_paths = [
+    "../webgwas-backend/prod_data/ukb_icd10_100k_wb_full",
+]
