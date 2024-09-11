@@ -28,6 +28,7 @@ use webgwas_backend_rs::models::{
 use webgwas_backend_rs::phenotype_definitions;
 use webgwas_backend_rs::regression::regress;
 use webgwas_backend_rs::AppState;
+use webgwas_backend_rs::{config::Settings, models::PhenotypeSummaryRequest};
 use webgwas_backend_rs::{errors::WebGWASError, worker::worker_loop};
 
 #[tokio::main]
@@ -117,7 +118,7 @@ async fn validate_phenotype(
 
 async fn get_phenotype_summary(
     State(state): State<Arc<AppState>>,
-    Json(request): Json<WebGWASRequest>,
+    Json(request): Json<PhenotypeSummaryRequest>,
 ) -> Result<Json<PhenotypeSummary>, WebGWASError> {
     let overall_start = Instant::now();
     // 1. Validate the phenotype definition
@@ -185,6 +186,7 @@ async fn get_phenotype_summary(
             n: n? as i32,
         })
     })
+    .take(request.n_samples.unwrap_or(phenotype_pred.len()))
     .collect::<Option<Vec<ApproximatePhenotypeValues>>>()
     .context("Failed to calculate phenotype values")?;
 
@@ -196,6 +198,12 @@ async fn get_phenotype_summary(
     let r2 = rss / tss;
     let duration = start.elapsed();
     debug!("Fit quality took {:?}", duration);
+    let fit_quality_reference = state
+        .fit_quality_reference
+        .iter()
+        .take(request.n_samples.unwrap_or(phenotype_pred.len()))
+        .cloned()
+        .collect::<Vec<PhenotypeFitQuality>>();
 
     let total_duration = overall_start.elapsed();
     debug!("Overall took {:?}", total_duration);
@@ -204,7 +212,7 @@ async fn get_phenotype_summary(
         phenotype_definition: request.phenotype_definition,
         cohort_id: request.cohort_id,
         phenotype_values,
-        fit_quality_reference: state.fit_quality_reference.clone().to_vec(),
+        fit_quality_reference,
         rsquared: r2,
     }))
 }

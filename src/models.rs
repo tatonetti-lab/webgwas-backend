@@ -78,6 +78,13 @@ pub struct ValidPhenotype {
 }
 
 #[derive(Deserialize, sqlx::Type)]
+pub struct PhenotypeSummaryRequest {
+    pub phenotype_definition: String,
+    pub cohort_id: i32,
+    pub n_samples: Option<usize>,
+}
+
+#[derive(Deserialize, sqlx::Type)]
 pub struct WebGWASRequest {
     pub phenotype_definition: String,
     pub cohort_id: i32,
