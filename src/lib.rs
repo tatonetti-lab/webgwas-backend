@@ -79,10 +79,10 @@ impl AppState {
             .f32()?
             .iter()
             .zip(fit_quality_df.column("phenotype_r2")?.f32()?.iter())
-            .map(|(x, y)| {
+            .map(|(g, p)| {
                 Some(PhenotypeFitQuality {
-                    phenotype_fit_quality: x?,
-                    gwas_fit_quality: y?,
+                    phenotype_fit_quality: p?,
+                    gwas_fit_quality: g?,
                 })
             })
             .collect::<Option<Vec<PhenotypeFitQuality>>>()
