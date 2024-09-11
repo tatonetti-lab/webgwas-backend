@@ -49,7 +49,6 @@ async fn main() {
 
     debug!("Initializing app");
     let app = Router::new()
-        .route("/", get(|| async { "Hello, world!" }))
         .route("/api/cohorts", get(get_cohorts))
         .route("/api/features", get(get_features))
         .route("/api/phenotype", put(validate_phenotype))
