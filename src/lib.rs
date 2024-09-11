@@ -1,3 +1,5 @@
+extern crate blas_src;
+
 use anyhow::{anyhow, Context, Result};
 use aws_config::Region;
 use aws_sdk_s3::Client;
