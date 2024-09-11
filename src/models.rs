@@ -115,16 +115,27 @@ pub struct WebGWASResult {
     pub url: Option<String>,
 }
 
+pub fn round_to_decimals<S>(value: &f32, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    serializer.serialize_f64((*value as f64 * 10000.0).trunc() / 10000.0)
+}
+
 #[derive(Serialize)]
 pub struct ApproximatePhenotypeValues {
+    #[serde(rename = "t", serialize_with = "round_to_decimals")]
     pub true_value: f32,
+    #[serde(rename = "a", serialize_with = "round_to_decimals")]
     pub approx_value: f32,
     pub n: i32,
 }
 
 #[derive(Clone, Serialize)]
 pub struct PhenotypeFitQuality {
+    #[serde(rename = "p", serialize_with = "round_to_decimals")]
     pub phenotype_fit_quality: f32,
+    #[serde(rename = "g", serialize_with = "round_to_decimals")]
     pub gwas_fit_quality: f32,
 }
 
@@ -134,6 +145,7 @@ pub struct PhenotypeSummary {
     pub cohort_id: i32,
     pub phenotype_values: Vec<ApproximatePhenotypeValues>,
     pub fit_quality_reference: Vec<PhenotypeFitQuality>,
+    #[serde(serialize_with = "round_to_decimals")]
     pub rsquared: f32,
 }
 
