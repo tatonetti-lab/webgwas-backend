@@ -30,7 +30,7 @@ pub struct AppState {
     pub db: SqlitePool,
     pub s3_client: aws_sdk_s3::Client,
     pub knowledge_base: KnowledgeBase,
-    pub cohort_id_to_info: HashMap<i32, Arc<CohortInfo>>,
+    pub cohort_id_to_info: Arc<Mutex<hashlru::Cache<i32, Arc<CohortInfo>>>>,
     pub fit_quality_reference: Arc<Vec<PhenotypeFitQuality>>,
     pub queue: Arc<Mutex<Vec<WebGWASRequestId>>>,
     pub results: Arc<Mutex<HashMap<Uuid, WebGWASResult>>>,
@@ -57,7 +57,7 @@ impl AppState {
         let kb = KnowledgeBase::new(fields);
 
         debug!("Loading cohorts");
-        let mut cohort_id_to_info = HashMap::new();
+        let mut cohort_id_to_info = hashlru::Cache::new(settings.cache_capacity);
         for cohort_path in settings.cohort_paths.iter() {
             let path = Path::new(cohort_path);
             let info = CohortInfo::load(path)
@@ -93,7 +93,7 @@ impl AppState {
             db,
             s3_client,
             knowledge_base: kb,
-            cohort_id_to_info,
+            cohort_id_to_info: Arc::new(Mutex::new(cohort_id_to_info)),
             fit_quality_reference: Arc::new(fit_quality_reference),
             queue: Arc::new(Mutex::new(Vec::new())),
             results: Arc::new(Mutex::new(HashMap::new())),

@@ -44,11 +44,10 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
     };
     state.results.lock().unwrap().insert(request.id, result);
     // 1. Apply the phenotype and compute the projection coefficents
-    let cohort_info = state
-        .cohort_id_to_info
-        .get(&request.cohort_id)
-        .unwrap()
-        .clone();
+    let cohort_info = {
+        let mut binding = state.cohort_id_to_info.lock().unwrap();
+        binding.get(&request.cohort_id).unwrap().clone()
+    };
     let phenotype =
         apply_phenotype_definition(&request.phenotype_definition, &cohort_info.features_df)
             .context(anyhow!("Failed to apply phenotype definition"))?;

@@ -16,6 +16,7 @@ axum-macros = "0.4.1"
 blas-src = { version = "0.10.0", features = ["blis"] }
 blis-src = { version = "0.2.2", features = ["static"] }
 env_logger = "0.11.5"
+hashlru = "0.11.1"
 itertools = "0.13.0"
 log = "0.4.22"
 ndarray = { version = "0.15.6", features = ["blas", "std"] }

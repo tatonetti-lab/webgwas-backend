@@ -128,11 +128,10 @@ async fn get_phenotype_summary(
         }
     };
     // 2. Apply the phenotype definition
-    let cohort_info = state
-        .cohort_id_to_info
-        .get(&request.cohort_id)
-        .unwrap()
-        .clone();
+    let cohort_info = {
+        let mut binding = state.cohort_id_to_info.lock().unwrap();
+        binding.get(&request.cohort_id).unwrap().clone()
+    };
     let phenotype = apply_phenotype_definition(&definition, &cohort_info.features_df)
         .context(anyhow!("Failed to apply phenotype definition"))?;
     let phenotype_ndarray = phenotype

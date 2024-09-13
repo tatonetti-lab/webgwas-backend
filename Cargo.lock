@@ -203,7 +203,7 @@ dependencies = [
  "arrow-schema",
  "chrono",
  "half",
- "hashbrown",
+ "hashbrown 0.14.5",
  "num",
 ]
 
@@ -1834,8 +1834,17 @@ version = "0.2.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8588661a8607108a5ca69cab034063441a0413a0b041c13618a7dd348021ef6f"
 dependencies = [
- "hashbrown",
+ "hashbrown 0.14.5",
  "serde",
+]
+
+[[package]]
+name = "hashbrown"
+version = "0.13.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "43a3c133739dddd0d2990f9a4bdf8eb4b21ef50e4851ca85ab661199821d510e"
+dependencies = [
+ "ahash",
 ]
 
 [[package]]
@@ -1856,7 +1865,16 @@ version = "0.9.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ba4ff7128dee98c7dc9794b6a411377e1404dba1c97deb8d1a55297bd25d8af"
 dependencies = [
- "hashbrown",
+ "hashbrown 0.14.5",
+]
+
+[[package]]
+name = "hashlru"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d2c782df656366ccb42fbbac7c7c180535a43d906a138ffb491ec3ed56a239ab"
+dependencies = [
+ "hashbrown 0.13.2",
 ]
 
 [[package]]
@@ -2117,7 +2135,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "68b900aa2f7301e21c36462b170ee99994de34dff39a4a6a528e80e7376d07e5"
 dependencies = [
  "equivalent",
- "hashbrown",
+ "hashbrown 0.14.5",
  "serde",
 ]
 
@@ -2307,7 +2325,7 @@ version = "0.12.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37ee39891760e7d94734f6f63fedc29a2e4a152f836120753a72503f09fcf904"
 dependencies = [
- "hashbrown",
+ "hashbrown 0.14.5",
 ]
 
 [[package]]
@@ -2738,7 +2756,7 @@ dependencies = [
  "chrono",
  "flate2",
  "half",
- "hashbrown",
+ "hashbrown 0.14.5",
  "lz4_flex",
  "num",
  "num-bigint",
@@ -2945,7 +2963,7 @@ dependencies = [
  "fast-float",
  "futures",
  "getrandom",
- "hashbrown",
+ "hashbrown 0.14.5",
  "itoa",
  "itoap",
  "lz4",
@@ -3003,7 +3021,7 @@ dependencies = [
  "chrono-tz",
  "comfy-table",
  "either",
- "hashbrown",
+ "hashbrown 0.14.5",
  "indexmap",
  "ndarray",
  "num-traits",
@@ -3070,7 +3088,7 @@ dependencies = [
  "fast-float",
  "futures",
  "glob",
- "hashbrown",
+ "hashbrown 0.14.5",
  "home",
  "itoa",
  "memchr",
@@ -3104,7 +3122,7 @@ dependencies = [
  "ahash",
  "chrono",
  "fallible-streaming-iterator",
- "hashbrown",
+ "hashbrown 0.14.5",
  "indexmap",
  "itoa",
  "num-traits",
@@ -3174,7 +3192,7 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "either",
- "hashbrown",
+ "hashbrown 0.14.5",
  "hex",
  "indexmap",
  "jsonpath_lib_polars_vendor",
@@ -3208,7 +3226,7 @@ dependencies = [
  "ethnum",
  "flate2",
  "futures",
- "hashbrown",
+ "hashbrown 0.14.5",
  "lz4",
  "num-traits",
  "parquet-format-safe",
@@ -3231,7 +3249,7 @@ dependencies = [
  "crossbeam-channel",
  "crossbeam-queue",
  "enum_dispatch",
- "hashbrown",
+ "hashbrown 0.14.5",
  "num-traits",
  "polars-arrow",
  "polars-compute",
@@ -3260,7 +3278,7 @@ dependencies = [
  "chrono",
  "chrono-tz",
  "either",
- "hashbrown",
+ "hashbrown 0.14.5",
  "memmap2",
  "once_cell",
  "percent-encoding",
@@ -3356,7 +3374,7 @@ dependencies = [
  "bytemuck",
  "bytes",
  "compact_str",
- "hashbrown",
+ "hashbrown 0.14.5",
  "indexmap",
  "libc",
  "memmap2",
@@ -4074,7 +4092,7 @@ dependencies = [
  "futures-intrusive",
  "futures-io",
  "futures-util",
- "hashbrown",
+ "hashbrown 0.14.5",
  "hashlink",
  "hex",
  "indexmap",
@@ -4891,6 +4909,7 @@ dependencies = [
  "blas-src",
  "blis-src",
  "env_logger",
+ "hashlru",
  "itertools",
  "log",
  "ndarray",
