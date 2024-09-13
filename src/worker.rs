@@ -122,9 +122,10 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
     });
     let duration = start.elapsed();
     debug!("Uploading took {:?}", duration);
+    // Remove the file
+    std::fs::remove_file(output_path).context("Failed to remove the local result file")?;
 
     debug!("Overall took {:?}", total_duration);
-
     let result = WebGWASResult {
         request_id: request.id,
         status: WebGWASResultStatus::Done,
@@ -141,12 +142,12 @@ pub async fn upload_object(
     bucket_name: &str,
     key: &str,
 ) -> Result<aws_sdk_s3::operation::put_object::PutObjectOutput> {
-    let body = aws_sdk_s3::primitives::ByteStream::from_path(Path::new(file_name)).await;
+    let body = aws_sdk_s3::primitives::ByteStream::from_path(Path::new(file_name)).await?;
     let result = client
         .put_object()
         .bucket(bucket_name)
         .key(key)
-        .body(body.unwrap())
+        .body(body)
         .send()
         .await?;
     Ok(result)
