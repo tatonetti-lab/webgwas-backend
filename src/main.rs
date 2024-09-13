@@ -16,7 +16,6 @@ use polars::{
 use std::thread;
 use std::{iter::repeat, sync::Arc};
 use tokio::time::Instant;
-use tower_http::cors::CorsLayer;
 use uuid::Uuid;
 
 use webgwas_backend::models::{
@@ -54,7 +53,6 @@ async fn main() {
         .route("/phenotype_summary", post(get_phenotype_summary))
         .route("/igwas", post(post_igwas))
         .route("/igwas/results/:request_id", get(get_igwas_results))
-        .layer(CorsLayer::permissive())
         .with_state(state);
 
     debug!("Starting server");
