@@ -13,8 +13,8 @@ aws-config = { version = "1.5.6", features = ["behavior-version-latest"] }
 aws-sdk-s3 = "1.49.0"
 axum = { version = "0.7.5", features = ["macros", "query"] }
 axum-macros = "0.4.1"
-blas-src = { version = "0.10.0", features = ["blis"] }
-blis-src = { version = "0.2.2", features = ["static"] }
+blas-src = { version = "0.10.0", features = ["openblas"] }
+openblas-src = { version = "0.10.9", features = ["static"] }
 env_logger = "0.11.5"
 hashlru = "0.11.1"
 itertools = "0.13.0"
@@ -27,4 +27,5 @@ sqlx = { version = "0.8.2", features = ["runtime-tokio", "sqlite"] }
 tokio = { version = "1.40.0", features = ["macros", "rt-multi-thread"] }
 toml = "0.8.19"
 uuid = { version = "1.10.0", features = ["serde", "v4"] }
-webgwas = { git = "https://github.com/zietzm/webgwas.git", version = "0.1.9" }
+webgwas = { git = "https://github.com/zietzm/webgwas.git", version = "0.2.0", branch = "new-schema" }
+tower-http = { version = "0.5.2", features = ["cors"] }
