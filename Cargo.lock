@@ -4896,7 +4896,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "webgwas-backend-rs"
+name = "webgwas-backend"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -4905,6 +4905,7 @@ dependencies = [
  "axum",
  "axum-macros",
  "blas-src",
+ "blis-src",
  "env_logger",
  "itertools",
  "log",

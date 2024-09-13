@@ -1,3 +1,6 @@
 /target
 backend.db
 *.tsv.zst
+prod_data
+backup_prod_data
+compile.sh

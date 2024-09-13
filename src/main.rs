@@ -1,6 +1,5 @@
 use anyhow::{anyhow, Context, Result};
 use axum::{
-    debug_handler,
     extract::{Path, Query, State},
     routing::{get, post, put},
     Json, Router,
@@ -19,16 +18,17 @@ use std::{iter::repeat, sync::Arc};
 use tokio::time::Instant;
 use tower_http::cors::CorsLayer;
 use uuid::Uuid;
-use webgwas_backend_rs::models::{
+
+use webgwas_backend::models::{
     ApproximatePhenotypeValues, Cohort, Feature, GetFeaturesRequest, PhenotypeFitQuality,
     PhenotypeSummary, ValidPhenotypeResponse, WebGWASRequest, WebGWASRequestId, WebGWASResponse,
     WebGWASResult, WebGWASResultStatus,
 };
-use webgwas_backend_rs::phenotype_definitions;
-use webgwas_backend_rs::regression::regress;
-use webgwas_backend_rs::AppState;
-use webgwas_backend_rs::{config::Settings, models::PhenotypeSummaryRequest};
-use webgwas_backend_rs::{errors::WebGWASError, worker::worker_loop};
+use webgwas_backend::phenotype_definitions;
+use webgwas_backend::regression::regress;
+use webgwas_backend::AppState;
+use webgwas_backend::{config::Settings, models::PhenotypeSummaryRequest};
+use webgwas_backend::{errors::WebGWASError, worker::worker_loop};
 
 #[tokio::main]
 async fn main() {
@@ -63,7 +63,6 @@ async fn main() {
 }
 
 /// Get all cohorts
-#[debug_handler]
 async fn get_cohorts(State(state): State<Arc<AppState>>) -> Json<Vec<Cohort>> {
     let result = sqlx::query_as::<_, Cohort>("SELECT * FROM cohort")
         .fetch_all(&state.db)
@@ -74,7 +73,6 @@ async fn get_cohorts(State(state): State<Arc<AppState>>) -> Json<Vec<Cohort>> {
 }
 
 /// Get all features for a given cohort
-#[debug_handler]
 async fn get_features(
     request: Query<GetFeaturesRequest>,
     State(state): State<Arc<AppState>>,
@@ -93,7 +91,6 @@ async fn get_features(
 }
 
 /// Validate a phenotype definition
-#[debug_handler]
 async fn validate_phenotype(
     State(state): State<Arc<AppState>>,
     Json(request): Json<WebGWASRequest>,

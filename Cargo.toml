@@ -1,10 +1,10 @@
 [package]
-name = "webgwas-backend-rs"
-version = "0.1.0"
+name = "webgwas-backend"
+version = "0.2.0"
 edition = "2021"
 
 [lib]
-name = "webgwas_backend_rs"
+name = "webgwas_backend"
 crate-type = ["lib"]
 
 [dependencies]
@@ -14,6 +14,7 @@ aws-sdk-s3 = "1.49.0"
 axum = { version = "0.7.5", features = ["macros", "query"] }
 axum-macros = "0.4.1"
 blas-src = { version = "0.10.0", features = ["blis"] }
+blis-src = { version = "0.2.2", features = ["static"] }
 env_logger = "0.11.5"
 itertools = "0.13.0"
 log = "0.4.22"
