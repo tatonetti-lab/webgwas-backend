@@ -47,12 +47,12 @@ async fn main() {
 
     debug!("Initializing app");
     let app = Router::new()
-        .route("/cohorts", get(get_cohorts))
-        .route("/features", get(get_features))
-        .route("/phenotype", put(validate_phenotype))
-        .route("/phenotype_summary", post(get_phenotype_summary))
-        .route("/igwas", post(post_igwas))
-        .route("/igwas/results/:request_id", get(get_igwas_results))
+        .route("/api/cohorts", get(get_cohorts))
+        .route("/api/features", get(get_features))
+        .route("/api/phenotype", put(validate_phenotype))
+        .route("/api/phenotype_summary", post(get_phenotype_summary))
+        .route("/api/igwas", post(post_igwas))
+        .route("/api/igwas/results/:request_id", get(get_igwas_results))
         .with_state(state);
 
     debug!("Starting server");
