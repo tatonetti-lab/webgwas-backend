@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use log::info!;
+use log::info;
 use ndarray::Array2;
 use polars::{
     datatypes::Float32Type,

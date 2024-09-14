@@ -3,7 +3,7 @@ extern crate blas_src;
 use anyhow::{anyhow, Context, Result};
 use aws_config::Region;
 use aws_sdk_s3::Client;
-use log::info!;
+use log::info;
 use phenotype_definitions::KnowledgeBase;
 use polars::io::{parquet::read::ParquetReader, SerReader};
 use sqlx::SqlitePool;

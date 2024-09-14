@@ -5,7 +5,7 @@ use axum::{
     Json, Router,
 };
 use itertools::izip;
-use log::info!;
+use log::info;
 use phenotype_definitions::{apply_phenotype_definition, validate_phenotype_definition};
 use polars::{
     datatypes::Float32Type,
