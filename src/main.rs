@@ -5,7 +5,7 @@ use axum::{
     Json, Router,
 };
 use itertools::izip;
-use log::debug;
+use log::info!;
 use phenotype_definitions::{apply_phenotype_definition, validate_phenotype_definition};
 use polars::{
     datatypes::Float32Type,
@@ -34,11 +34,11 @@ use webgwas_backend::{errors::WebGWASError, worker::worker_loop};
 async fn main() {
     env_logger::init();
 
-    debug!("Reading settings");
+    info!("Reading settings");
     let settings = Settings::read_file("settings.toml")
         .context("Failed to read config file")
         .unwrap();
-    debug!("Initializing state");
+    info!("Initializing state");
     let state = Arc::new(AppState::new(settings).await.unwrap());
 
     let worker_state = state.clone();
@@ -46,7 +46,7 @@ async fn main() {
         worker_loop(worker_state);
     });
 
-    debug!("Initializing app");
+    info!("Initializing app");
     let app = Router::new()
         .route("/api/cohorts", get(get_cohorts))
         .route("/api/features", get(get_features))
@@ -57,7 +57,7 @@ async fn main() {
         .layer(CorsLayer::permissive())
         .with_state(state);
 
-    debug!("Starting server");
+    info!("Starting server");
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();
     axum::serve(listener, app).await.unwrap();
 }
@@ -78,7 +78,7 @@ async fn get_features(
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<Feature>>, WebGWASError> {
     let request = request.0;
-    debug!("Fetching features for cohort {}", request.cohort_id);
+    info!("Fetching features for cohort {}", request.cohort_id);
     let result = sqlx::query_as::<_, Feature>(
         "SELECT id, code, name, type as node_type, cohort_id FROM feature WHERE cohort_id = $1",
     )
@@ -146,7 +146,7 @@ async fn get_phenotype_summary(
     let start = Instant::now();
     let beta = regress(&phenotype_ndarray, &cohort_info.left_inverse);
     let duration = start.elapsed();
-    debug!("Regression took {:?}", duration);
+    info!("Regression took {:?}", duration);
 
     let start = Instant::now();
     let phenotype_pred = cohort_info
@@ -154,7 +154,7 @@ async fn get_phenotype_summary(
         .to_ndarray::<Float32Type>(IndexOrder::Fortran)?
         .dot(&beta);
     let duration = start.elapsed();
-    debug!("Prediction took {:?}", duration);
+    info!("Prediction took {:?}", duration);
 
     let phenotype_pred_df = DataFrame::new(vec![
         Series::new(
@@ -193,7 +193,7 @@ async fn get_phenotype_summary(
     let tss = (phenotype_ndarray - mean).map(|x| x * x).sum();
     let r2 = 1.0 - (rss / tss);
     let duration = start.elapsed();
-    debug!("Fit quality took {:?}", duration);
+    info!("Fit quality took {:?}", duration);
     let fit_quality_reference = state
         .fit_quality_reference
         .iter()
@@ -202,7 +202,7 @@ async fn get_phenotype_summary(
         .collect::<Vec<PhenotypeFitQuality>>();
 
     let total_duration = overall_start.elapsed();
-    debug!("Overall took {:?}", total_duration);
+    info!("Overall took {:?}", total_duration);
 
     Ok(Json(PhenotypeSummary {
         phenotype_definition: request.phenotype_definition,
@@ -218,7 +218,7 @@ async fn post_igwas(
     Json(request): Json<WebGWASRequest>,
 ) -> Json<WebGWASResponse> {
     let request_time = Instant::now();
-    debug!("Received webgwas request");
+    info!("Received webgwas request");
     // Validate the cohort and phenotype
     let unique_id = Uuid::new_v4();
     match validate_phenotype_definition(
@@ -255,7 +255,7 @@ async fn get_igwas_results(
     State(state): State<Arc<AppState>>,
     Path(request_id): Path<Uuid>,
 ) -> Json<WebGWASResult> {
-    debug!("Fetching WebGWAS result for {}", request_id);
+    info!("Fetching WebGWAS result for {}", request_id);
     match state.results.lock().unwrap().get(&request_id) {
         Some(result) => Json(result.clone()),
         None => Json(WebGWASResult {

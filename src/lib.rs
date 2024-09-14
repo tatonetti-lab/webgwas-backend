@@ -3,7 +3,7 @@ extern crate blas_src;
 use anyhow::{anyhow, Context, Result};
 use aws_config::Region;
 use aws_sdk_s3::Client;
-use log::debug;
+use log::info!;
 use phenotype_definitions::KnowledgeBase;
 use polars::io::{parquet::read::ParquetReader, SerReader};
 use sqlx::SqlitePool;
@@ -38,7 +38,7 @@ pub struct AppState {
 
 impl AppState {
     pub async fn new(settings: Settings) -> Result<Self> {
-        debug!("Initializing database");
+        info!("Initializing database");
         let db = SqlitePool::connect(&settings.sqlite_db_path)
             .await
             .context(anyhow!(
@@ -46,7 +46,7 @@ impl AppState {
                 settings.sqlite_db_path
             ))?;
 
-        debug!("Fetching features");
+        info!("Fetching features");
         let fields = sqlx::query_as::<_, Feature>(
             "SELECT id, code, name, type as node_type, cohort_id FROM feature",
         )
@@ -56,22 +56,22 @@ impl AppState {
         .unwrap();
         let kb = KnowledgeBase::new(fields);
 
-        debug!("Loading cohorts");
+        info!("Loading cohorts");
         let mut cohort_id_to_info = hashlru::Cache::new(settings.cache_capacity);
         for cohort_path in settings.cohort_paths.iter() {
             let path = Path::new(cohort_path);
             let info = CohortInfo::load(path)
                 .context(anyhow!("Failed to load cohort info for {}", cohort_path))?;
             cohort_id_to_info.insert(info.cohort_id, Arc::new(info));
-            debug!("Loaded cohort info for {}", cohort_path);
+            info!("Loaded cohort info for {}", cohort_path);
         }
 
-        debug!("Initializing S3 client");
+        info!("Initializing S3 client");
         let region = Region::new(settings.s3_region.clone());
         let shared_config = aws_config::from_env().region(region).load().await;
         let s3_client = Client::new(&shared_config);
 
-        debug!("Loading fit quality reference");
+        info!("Loading fit quality reference");
         let fit_quality_file = File::open(&settings.fit_quality_file)?;
         let fit_quality_df = ParquetReader::new(fit_quality_file).finish()?;
         let fit_quality_reference = fit_quality_df
@@ -98,7 +98,7 @@ impl AppState {
             queue: Arc::new(Mutex::new(Vec::new())),
             results: Arc::new(Mutex::new(HashMap::new())),
         };
-        debug!("Finished initializing app state");
+        info!("Finished initializing app state");
         Ok(state)
     }
 }

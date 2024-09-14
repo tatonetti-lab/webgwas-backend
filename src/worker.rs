@@ -1,6 +1,6 @@
 use anyhow::{anyhow, Context, Result};
 use aws_sdk_s3::presigning::PresigningConfig;
-use log::debug;
+use log::info;
 use ndarray::s;
 use std::path::Path;
 use std::sync::Arc;
@@ -23,10 +23,10 @@ pub fn worker_loop(state: Arc<AppState>) {
             queue.pop()
         };
         if let Some(request) = task {
-            debug!("Got a request!!");
+            info!("Got a request!!");
             let result = handle_webgwas_request(state.clone(), request);
             if let Err(err) = result {
-                debug!("Failed to handle request: {}", err);
+                info!("Failed to handle request: {}", err);
             }
         } else {
             thread::sleep(Duration::from_millis(100));
@@ -61,7 +61,7 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
     // Drop the last element of the beta vector, which is the intercept
     let beta = beta.slice(s![..-1]);
     let duration = start.elapsed();
-    debug!("Regression took {:?}", duration);
+    info!("Regression took {:?}", duration);
     let phenotype_names: Vec<String> = cohort_info
         .features_df
         .drop("const")?
@@ -75,7 +75,7 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
     let start = Instant::now();
     let projection_variance = beta.dot(&cohort_info.covariance_matrix.dot(&beta));
     let duration = start.elapsed();
-    debug!("Computing projection variance took {:?}", duration);
+    info!("Computing projection variance took {:?}", duration);
 
     // 3. Compute GWAS
     let output_path = format!("{}.tsv.zst", request.id);
@@ -89,7 +89,7 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
         16,
     )?;
     let duration = start.elapsed();
-    debug!("GWAS took {:?}", duration);
+    info!("GWAS took {:?}", duration);
     let total_duration = request.request_time.elapsed();
 
     let start = Instant::now();
@@ -120,11 +120,11 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
         url
     });
     let duration = start.elapsed();
-    debug!("Uploading took {:?}", duration);
+    info!("Uploading took {:?}", duration);
     // Remove the file
     std::fs::remove_file(output_path).context("Failed to remove the local result file")?;
 
-    debug!("Overall took {:?}", total_duration);
+    info!("Overall took {:?}", total_duration);
     let result = WebGWASResult {
         request_id: request.id,
         status: WebGWASResultStatus::Done,

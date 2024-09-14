@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use log::debug;
+use log::info!;
 use ndarray::Array2;
 use polars::{
     datatypes::Float32Type,
@@ -203,17 +203,17 @@ pub struct CohortMetadata {
 
 impl CohortInfo {
     pub fn load(root_directory: &Path) -> Result<CohortInfo> {
-        debug!("Loading metadata for {}", root_directory.display());
+        info!("Loading metadata for {}", root_directory.display());
         let metadata_file_path = root_directory.join("metadata.toml");
         let metadata = read_to_string(metadata_file_path)?;
         let metadata = toml::from_str::<CohortMetadata>(&metadata)?;
 
-        debug!("Loading features for {}", root_directory.display());
+        info!("Loading features for {}", root_directory.display());
         let features_file_path = root_directory.join("phenotype_data.parquet");
         let features_file = File::open(features_file_path)?;
         let features_df = ParquetReader::new(features_file).finish()?;
 
-        debug!("Loading left inverse for {}", root_directory.display());
+        info!("Loading left inverse for {}", root_directory.display());
         let left_inverse_file_path = root_directory.join("phenotype_left_inverse.parquet");
         let left_inverse_file = File::open(left_inverse_file_path)?;
         let mut left_inverse = ParquetReader::new(left_inverse_file)
@@ -221,12 +221,12 @@ impl CohortInfo {
             .to_ndarray::<Float32Type>(IndexOrder::Fortran)?;
         left_inverse.swap_axes(0, 1); // Transpose
 
-        debug!("Loading GWAS for {}", root_directory.display());
+        info!("Loading GWAS for {}", root_directory.display());
         let gwas_file_path = root_directory.join("gwas.parquet");
         let gwas_file = File::open(gwas_file_path)?;
         let gwas_df = ParquetReader::new(gwas_file).finish()?;
 
-        debug!("Loading covariance matrix for {}", root_directory.display());
+        info!("Loading covariance matrix for {}", root_directory.display());
         let covariance_matrix_file_path = root_directory.join("phenotypic_covariance.csv");
         let covariance_matrix = CsvReadOptions::default()
             .with_has_header(true)
@@ -235,7 +235,7 @@ impl CohortInfo {
             .drop("phenotype")?
             .to_ndarray::<Float32Type>(IndexOrder::Fortran)?;
 
-        debug!(
+        info!(
             "Finished loading cohort info for {}",
             root_directory.display()
         );
