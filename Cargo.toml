@@ -31,9 +31,11 @@ uuid = { version = "1.10.0", features = ["serde", "v4"] }
 tower-http = { version = "0.5.2", features = ["cors"] }
 clap = { version = "4.5.17", features = ["color", "derive", "help"] }
 rusqlite = "0.32.1"
-polars = { git = "https://github.com/pola-rs/polars", version = "0.43.1", features = ["lazy", "ndarray", "parquet", "performant", "rows", "zip_with"] }
+polars = { git = "https://github.com/pola-rs/polars", version = "0.43.1", features = ["decompress", "lazy", "ndarray", "parquet", "performant", "regex", "rows", "zip_with"] }
 zstd = "0.13.2"
 statrs = "0.17.1"
 arrow = "53.0.0"
 faer = "0.19.3"
 faer-ext = { path = "../../Documents/git/faer-ext/", version = "0.2.0", features = ["polars"] }
+mdav = { git = "https://github.com/zietzm/mdav", version = "0.2.1" }
+indicatif = "0.17.8"

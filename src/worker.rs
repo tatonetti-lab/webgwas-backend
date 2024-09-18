@@ -9,7 +9,7 @@ use tokio::time::Duration;
 use tokio::time::Instant;
 
 use crate::igwas::{run_igwas_df_impl, Projection};
-use crate::regression::regress_left_inverse;
+use crate::regression::regress_left_inverse_vec;
 use crate::AppState;
 use crate::{
     models::{WebGWASRequestId, WebGWASResult, WebGWASResultStatus},
@@ -56,7 +56,7 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
         phenotype_mat[i] = x.expect("Failed to get phenotype value");
     });
     let start = Instant::now();
-    let mut beta = regress_left_inverse(&phenotype_mat, &cohort_info.left_inverse);
+    let mut beta = regress_left_inverse_vec(&phenotype_mat, &cohort_info.left_inverse);
     // Drop the last element of the beta vector, which is the intercept
     beta.truncate(beta.nrows() - 1);
     let duration = start.elapsed();

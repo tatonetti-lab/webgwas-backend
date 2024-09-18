@@ -22,7 +22,7 @@ use webgwas_backend::models::{
     WebGWASResult, WebGWASResultStatus,
 };
 use webgwas_backend::phenotype_definitions;
-use webgwas_backend::regression::regress_left_inverse;
+use webgwas_backend::regression::regress_left_inverse_vec;
 use webgwas_backend::AppState;
 use webgwas_backend::{config::Settings, models::PhenotypeSummaryRequest};
 use webgwas_backend::{errors::WebGWASError, worker::worker_loop};
@@ -140,7 +140,7 @@ async fn get_phenotype_summary(
 
     // 3. Regress the phenotype against the features
     let start = Instant::now();
-    let beta = regress_left_inverse(&phenotype_mat, &cohort_info.left_inverse);
+    let beta = regress_left_inverse_vec(&phenotype_mat, &cohort_info.left_inverse);
     let duration = start.elapsed();
     info!("Regression took {:?}", duration);
 
