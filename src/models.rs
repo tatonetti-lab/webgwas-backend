@@ -1,11 +1,13 @@
 use anyhow::{anyhow, Result};
+use faer::Mat;
+use faer_ext::polars::polars_to_faer_f32;
 use log::info;
-use ndarray::Array2;
-use polars::{
-    datatypes::Float32Type,
-    io::{csv::read::CsvReadOptions, parquet::read::ParquetReader, SerReader},
-    prelude::{DataFrame, IndexOrder},
-};
+use polars::prelude::*;
+// use polars::{
+//     datatypes::Float32Type,
+//     io::{csv::read::CsvReadOptions, parquet::read::ParquetReader, SerReader},
+//     prelude::{DataFrame, IndexOrder},
+// };
 use serde::{Deserialize, Serialize};
 use sqlx::prelude::FromRow;
 use std::fs::{read_to_string, File};
@@ -189,16 +191,16 @@ pub struct CohortInfo {
     pub cohort_name: String,
     pub num_covar: i32,
     pub features_df: DataFrame,
-    pub left_inverse: Array2<f32>,
+    pub left_inverse: Mat<f32>,
     pub gwas_df: DataFrame,
-    pub covariance_matrix: Array2<f32>,
+    pub covariance_matrix: Mat<f32>,
 }
 
 #[derive(Deserialize)]
 pub struct CohortMetadata {
-    pub cohort_id: i32,
+    pub cohort_id: Option<i32>,
     pub cohort_name: String,
-    pub num_covar: i32,
+    pub num_covar: Option<i32>,
 }
 
 impl CohortInfo {
@@ -216,10 +218,10 @@ impl CohortInfo {
         info!("Loading left inverse for {}", root_directory.display());
         let left_inverse_file_path = root_directory.join("phenotype_left_inverse.parquet");
         let left_inverse_file = File::open(left_inverse_file_path)?;
-        let mut left_inverse = ParquetReader::new(left_inverse_file)
-            .finish()?
-            .to_ndarray::<Float32Type>(IndexOrder::Fortran)?;
-        left_inverse.swap_axes(0, 1); // Transpose
+        let left_inverse_df = ParquetReader::new(left_inverse_file).finish()?;
+        let left_inverse = polars_to_faer_f32(left_inverse_df.lazy())?
+            .transpose()
+            .to_owned();
 
         info!("Loading GWAS for {}", root_directory.display());
         let gwas_file_path = root_directory.join("gwas.parquet");
@@ -228,12 +230,12 @@ impl CohortInfo {
 
         info!("Loading covariance matrix for {}", root_directory.display());
         let covariance_matrix_file_path = root_directory.join("phenotypic_covariance.csv");
-        let covariance_matrix = CsvReadOptions::default()
+        let covariance_matrix_df = CsvReadOptions::default()
             .with_has_header(true)
             .try_into_reader_with_file_path(Some(covariance_matrix_file_path))?
             .finish()?
-            .drop("phenotype")?
-            .to_ndarray::<Float32Type>(IndexOrder::Fortran)?;
+            .drop("phenotype")?;
+        let covariance_matrix = polars_to_faer_f32(covariance_matrix_df.lazy())?;
 
         info!(
             "Finished loading cohort info for {}",
@@ -241,9 +243,9 @@ impl CohortInfo {
         );
 
         Ok(CohortInfo {
-            cohort_id: metadata.cohort_id,
+            cohort_id: metadata.cohort_id.expect("Cohort ID is missing"),
             cohort_name: metadata.cohort_name,
-            num_covar: metadata.num_covar,
+            num_covar: metadata.num_covar.expect("Number of covariates is missing"),
             features_df,
             left_inverse,
             gwas_df,

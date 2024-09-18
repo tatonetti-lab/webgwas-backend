@@ -4,15 +4,12 @@ use axum::{
     routing::{get, post, put},
     Json, Router,
 };
+use faer::Col;
+use faer_ext::polars::polars_to_faer_f32;
 use itertools::izip;
 use log::info;
 use phenotype_definitions::{apply_phenotype_definition, validate_phenotype_definition};
-use polars::{
-    datatypes::Float32Type,
-    frame::DataFrame,
-    prelude::{IndexOrder, NamedFrom},
-    series::Series,
-};
+use polars::prelude::*;
 use std::thread;
 use std::{iter::repeat, sync::Arc};
 use tokio::time::Instant;
@@ -25,7 +22,7 @@ use webgwas_backend::models::{
     WebGWASResult, WebGWASResultStatus,
 };
 use webgwas_backend::phenotype_definitions;
-use webgwas_backend::regression::regress;
+use webgwas_backend::regression::regress_left_inverse;
 use webgwas_backend::AppState;
 use webgwas_backend::{config::Settings, models::PhenotypeSummaryRequest};
 use webgwas_backend::{errors::WebGWASError, worker::worker_loop};
@@ -136,35 +133,31 @@ async fn get_phenotype_summary(
     };
     let phenotype = apply_phenotype_definition(&definition, &cohort_info.features_df)
         .context(anyhow!("Failed to apply phenotype definition"))?;
-    let phenotype_ndarray = phenotype
-        .f32()
-        .context("Failed to convert phenotype to ndarray")?
-        .to_ndarray()?
-        .into_owned();
+    let mut phenotype_mat = Col::zeros(phenotype.len());
+    phenotype.f32()?.iter().enumerate().for_each(|(i, x)| {
+        phenotype_mat[i] = x.expect("Failed to get phenotype value");
+    });
 
     // 3. Regress the phenotype against the features
     let start = Instant::now();
-    let beta = regress(&phenotype_ndarray, &cohort_info.left_inverse);
+    let beta = regress_left_inverse(&phenotype_mat, &cohort_info.left_inverse);
     let duration = start.elapsed();
     info!("Regression took {:?}", duration);
 
     let start = Instant::now();
-    let phenotype_pred = cohort_info
-        .features_df
-        .to_ndarray::<Float32Type>(IndexOrder::Fortran)?
-        .dot(&beta);
+    let phenotype_pred = polars_to_faer_f32(cohort_info.features_df.clone().lazy())? * &beta;
     let duration = start.elapsed();
     info!("Prediction took {:?}", duration);
 
     let phenotype_pred_df = DataFrame::new(vec![
-        Series::new(
+        Column::new(
             "approx_value".into(),
             phenotype_pred.iter().collect::<Series>(),
         ),
-        Series::new("true_value".into(), phenotype),
-        Series::new(
+        Column::new("true_value".into(), phenotype),
+        Column::new(
             "count".into(),
-            repeat(1).take(phenotype_pred.len()).collect::<Series>(),
+            repeat(1).take(phenotype_pred.nrows()).collect::<Series>(),
         ),
     ])?
     .group_by(["approx_value", "true_value"])?
@@ -182,22 +175,26 @@ async fn get_phenotype_summary(
             n: n? as i32,
         })
     })
-    .take(request.n_samples.unwrap_or(phenotype_pred.len()))
+    .take(request.n_samples.unwrap_or(phenotype_pred.nrows()))
     .collect::<Option<Vec<ApproximatePhenotypeValues>>>()
     .context("Failed to calculate phenotype values")?;
 
     // 4. Calculate the fit quality
     let start = Instant::now();
-    let rss = (&phenotype_pred - &phenotype_ndarray).map(|x| x * x).sum();
-    let mean = phenotype_pred.mean().context("Failed to calculate mean")?;
-    let tss = (phenotype_ndarray - mean).map(|x| x * x).sum();
+    let rss = (&phenotype_pred - &phenotype_mat).squared_norm_l2();
+    let mean = phenotype_pred.sum() / phenotype_pred.nrows() as f32;
+    let tss = phenotype_mat
+        .iter()
+        .map(|x| (x - mean).powi(2))
+        .sum::<f32>()
+        / phenotype_mat.nrows() as f32;
     let r2 = 1.0 - (rss / tss);
     let duration = start.elapsed();
     info!("Fit quality took {:?}", duration);
     let fit_quality_reference = state
         .fit_quality_reference
         .iter()
-        .take(request.n_samples.unwrap_or(phenotype_pred.len()))
+        .take(request.n_samples.unwrap_or(phenotype_pred.nrows()))
         .cloned()
         .collect::<Vec<PhenotypeFitQuality>>();
 

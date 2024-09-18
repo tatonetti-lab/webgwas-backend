@@ -1,15 +1,15 @@
 use anyhow::{anyhow, Context, Result};
 use aws_sdk_s3::presigning::PresigningConfig;
+use faer::Col;
 use log::info;
-use ndarray::s;
 use std::path::Path;
 use std::sync::Arc;
 use std::thread;
 use tokio::time::Duration;
 use tokio::time::Instant;
-use webgwas::igwas_prod::{run_igwas_df_impl, Projection};
 
-use crate::regression::regress;
+use crate::igwas::{run_igwas_df_impl, Projection};
+use crate::regression::regress_left_inverse;
 use crate::AppState;
 use crate::{
     models::{WebGWASRequestId, WebGWASResult, WebGWASResultStatus},
@@ -51,15 +51,14 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
     let phenotype =
         apply_phenotype_definition(&request.phenotype_definition, &cohort_info.features_df)
             .context(anyhow!("Failed to apply phenotype definition"))?;
-    let phenotype_ndarray = phenotype
-        .f32()
-        .context("Failed to convert phenotype to ndarray")?
-        .to_ndarray()?
-        .into_owned();
+    let mut phenotype_mat = Col::zeros(phenotype.len());
+    phenotype.f32()?.iter().enumerate().for_each(|(i, x)| {
+        phenotype_mat[i] = x.expect("Failed to get phenotype value");
+    });
     let start = Instant::now();
-    let beta = regress(&phenotype_ndarray, &cohort_info.left_inverse);
+    let mut beta = regress_left_inverse(&phenotype_mat, &cohort_info.left_inverse);
     // Drop the last element of the beta vector, which is the intercept
-    let beta = beta.slice(s![..-1]);
+    beta.truncate(beta.nrows() - 1);
     let duration = start.elapsed();
     info!("Regression took {:?}", duration);
     let phenotype_names: Vec<String> = cohort_info
@@ -69,11 +68,11 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
         .iter()
         .map(|x| x.to_string())
         .collect();
-    let mut projection = Projection::new(phenotype_names, beta.to_vec())?;
+    let mut projection = Projection::new(phenotype_names, beta.clone())?;
 
     // 2. Compute the projection variance
     let start = Instant::now();
-    let projection_variance = beta.dot(&cohort_info.covariance_matrix.dot(&beta));
+    let projection_variance = beta.transpose() * &cohort_info.covariance_matrix * &beta;
     let duration = start.elapsed();
     info!("Computing projection variance took {:?}", duration);
 

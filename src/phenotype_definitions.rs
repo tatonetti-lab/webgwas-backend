@@ -2,11 +2,8 @@ use std::collections::HashMap;
 use std::str::FromStr;
 
 use anyhow::{anyhow, bail, Context, Result};
-use polars::frame::DataFrame;
 use polars::prelude::*;
 use polars::series::arithmetic::LhsNumOps;
-use polars::series::IntoSeries;
-use polars::series::Series;
 
 use crate::models::{Constant, Feature, Node, NodeType, Operators, ParsingNode};
 
@@ -187,7 +184,13 @@ pub fn apply_phenotype_definition(definition: &[Node], df: &DataFrame) -> Result
     for node in definition {
         match node {
             Node::Feature(field) => {
-                stack.push(df.column(field.code.as_str()).unwrap().clone());
+                stack.push(
+                    df.column(field.code.as_str())
+                        .unwrap()
+                        .as_series()
+                        .unwrap()
+                        .clone(),
+                );
             }
             Node::Operator(op) => {
                 let operator_value = op.value();

@@ -1,11 +1,10 @@
-extern crate blas_src;
-
 use anyhow::{anyhow, Context, Result};
 use aws_config::Region;
 use aws_sdk_s3::Client;
 use log::info;
 use phenotype_definitions::KnowledgeBase;
-use polars::io::{parquet::read::ParquetReader, SerReader};
+use polars::io::parquet::read::ParquetReader;
+use polars::prelude::*;
 use sqlx::SqlitePool;
 use std::path::Path;
 use std::{
@@ -17,6 +16,7 @@ use uuid::Uuid;
 
 pub mod config;
 pub mod errors;
+pub mod igwas;
 pub mod models;
 pub mod phenotype_definitions;
 pub mod regression;
