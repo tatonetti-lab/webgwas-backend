@@ -181,13 +181,15 @@ async fn get_phenotype_summary(
 
     // 4. Calculate the fit quality
     let start = Instant::now();
-    let rss = (&phenotype_pred - &phenotype_mat).squared_norm_l2();
-    let mean = phenotype_pred.sum() / phenotype_pred.nrows() as f32;
+    let rss = (&phenotype_pred - &phenotype_mat)
+        .iter()
+        .map(|x| x.powi(2))
+        .sum::<f32>();
+    let mean = phenotype_mat.sum() / phenotype_mat.nrows() as f32;
     let tss = phenotype_mat
         .iter()
         .map(|x| (x - mean).powi(2))
-        .sum::<f32>()
-        / phenotype_mat.nrows() as f32;
+        .sum::<f32>();
     let r2 = 1.0 - (rss / tss);
     let duration = start.elapsed();
     info!("Fit quality took {:?}", duration);
