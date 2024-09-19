@@ -526,8 +526,6 @@ impl LocalAppState {
             Some(n) => n,
             None => data.y_phenotypes.nrows(),
         };
-        // let mut raw_phenotypes_with_intercept = data.y_phenotypes.clone();
-        // add_intercept(&mut raw_phenotypes_with_intercept);
         let raw_phenotypes = data
             .y_phenotypes
             .row_iter()
@@ -541,7 +539,7 @@ impl LocalAppState {
         let mut anonymized_phenotypes_df =
             vec_vec_to_polars(anonymized_phenotypes, &data.phenotype_names)?
                 .lazy()
-                .with_column(lit(1.0).alias("intercept"))
+                .with_column(lit(1.0).cast(DataType::Float32).alias("intercept"))
                 .collect()?;
         let column_names = anonymized_phenotypes_df
             .get_column_names()
