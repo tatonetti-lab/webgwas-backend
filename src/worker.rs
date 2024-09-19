@@ -45,7 +45,7 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
     state.results.lock().unwrap().insert(request.id, result);
     // 1. Apply the phenotype and compute the projection coefficents
     let cohort_info = {
-        let mut binding = state.cohort_id_to_info.lock().unwrap();
+        let binding = state.cohort_id_to_data.lock().unwrap();
         binding.get(&request.cohort_id).unwrap().clone()
     };
     let phenotype =
@@ -63,7 +63,7 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
     info!("Regression took {:?}", duration);
     let phenotype_names: Vec<String> = cohort_info
         .features_df
-        .drop("const")?
+        .drop("intercept")?
         .get_column_names()
         .iter()
         .map(|x| x.to_string())
@@ -83,7 +83,7 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
         &cohort_info.gwas_df,
         &mut projection,
         projection_variance,
-        cohort_info.num_covar as usize,
+        cohort_info.cohort.num_covar.expect("Num_covar is missing") as usize,
         output_path.to_string(),
         16,
     )?;

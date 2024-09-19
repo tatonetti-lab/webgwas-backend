@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 
 use anyhow::{anyhow, bail, Context, Result};
+use itertools::izip;
 use polars::prelude::*;
 use polars::series::arithmetic::LhsNumOps;
 
@@ -246,21 +247,33 @@ pub fn apply_phenotype_definition(definition: &[Node], df: &DataFrame) -> Result
                                 stack.push(result?);
                             }
                             Operators::And => {
-                                let result = item1
-                                    .f32()?
-                                    .iter()
-                                    .zip(item2.f32()?.iter())
-                                    .map(|(x, y)| x.unwrap().min(y.unwrap()))
-                                    .collect();
+                                let result = izip!(
+                                    item1
+                                        .f32()?
+                                        .into_iter()
+                                        .map(|x| x.expect("Item1 not found")),
+                                    item2
+                                        .f32()?
+                                        .into_iter()
+                                        .map(|x| x.expect("Item2 not found"))
+                                )
+                                .map(|(x, y)| x.min(y))
+                                .collect();
                                 stack.push(result);
                             }
                             Operators::Or => {
-                                let result = item1
-                                    .f32()?
-                                    .iter()
-                                    .zip(item2.f32()?.iter())
-                                    .map(|(x, y)| x.unwrap().max(y.unwrap()))
-                                    .collect();
+                                let result = izip!(
+                                    item1
+                                        .f32()?
+                                        .into_iter()
+                                        .map(|x| x.expect("Item1 not found")),
+                                    item2
+                                        .f32()?
+                                        .into_iter()
+                                        .map(|x| x.expect("Item2 not found"))
+                                )
+                                .map(|(x, y)| x.max(y))
+                                .collect();
                                 stack.push(result);
                             }
                             Operators::Gt => {

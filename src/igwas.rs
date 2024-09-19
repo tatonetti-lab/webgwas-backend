@@ -185,13 +185,13 @@ pub fn compute_batch_stats(df: &DataFrame, projection: &mut Projection) -> Resul
         .map(|x| x.expect("Failed to get variant_id").to_string())
         .collect::<Vec<String>>();
     let genotype_variance = df
-        .column("genotype_variance")
+        .column("genotype_partial_variance")
         .context("No genotype_variance column")?
         .f32()
-        .context("genotype_variance column is not f32")?
+        .context("genotype_partial_variance column is not f32")?
         .iter()
         .collect::<Option<Vec<f32>>>()
-        .expect("Failed to collect genotype_variance");
+        .expect("Failed to collect genotype_partial_variance");
     let degrees_of_freedom = df
         .column("degrees_of_freedom")
         .context("No degrees_of_freedom column")?

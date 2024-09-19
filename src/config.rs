@@ -19,9 +19,6 @@ pub struct Settings {
     pub s3_region: String,
     pub s3_bucket: String,
     pub s3_result_path: String,
-    pub sqlite_db_path: String,
-    pub fit_quality_file: String,
-    pub cohort_paths: Vec<String>,
 }
 
 impl Settings {

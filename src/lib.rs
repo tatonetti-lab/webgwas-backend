@@ -2,6 +2,7 @@ use anyhow::{anyhow, Context, Result};
 use aws_config::Region;
 use aws_sdk_s3::Client;
 use log::info;
+use models::Cohort;
 use phenotype_definitions::KnowledgeBase;
 use polars::io::parquet::read::ParquetReader;
 use polars::prelude::*;
@@ -23,14 +24,14 @@ pub mod regression;
 pub mod worker;
 
 use crate::config::Settings;
-use crate::models::{CohortInfo, Feature, PhenotypeFitQuality, WebGWASRequestId, WebGWASResult};
+use crate::models::{CohortData, Feature, PhenotypeFitQuality, WebGWASRequestId, WebGWASResult};
 
 pub struct AppState {
     pub settings: Settings,
     pub db: SqlitePool,
     pub s3_client: aws_sdk_s3::Client,
     pub knowledge_base: KnowledgeBase,
-    pub cohort_id_to_info: Arc<Mutex<hashlru::Cache<i32, Arc<CohortInfo>>>>,
+    pub cohort_id_to_data: Arc<Mutex<HashMap<i32, Arc<CohortData>>>>,
     pub fit_quality_reference: Arc<Vec<PhenotypeFitQuality>>,
     pub queue: Arc<Mutex<Vec<WebGWASRequestId>>>,
     pub results: Arc<Mutex<HashMap<Uuid, WebGWASResult>>>,
@@ -39,12 +40,29 @@ pub struct AppState {
 impl AppState {
     pub async fn new(settings: Settings) -> Result<Self> {
         info!("Initializing database");
-        let db = SqlitePool::connect(&settings.sqlite_db_path)
+        let home = std::env::var("HOME").expect("Failed to read $HOME");
+        let root = Path::new(&home).join("webgwas");
+        let db_path = root.join("webgwas.db").display().to_string();
+        let db = SqlitePool::connect(&db_path)
             .await
-            .context(anyhow!(
-                "Failed to connect to database: {}",
-                settings.sqlite_db_path
-            ))?;
+            .context(anyhow!("Failed to connect to database: {}", db_path))?;
+
+        info!("Loading cohorts");
+        let cohort_id_to_data = sqlx::query_as::<_, Cohort>("SELECT * FROM cohort")
+            .fetch_all(&db)
+            .await
+            .context("Failed to fetch cohorts")?
+            .into_iter()
+            .map(|cohort| -> Result<CohortData> { CohortData::load(cohort, &root) })
+            .collect::<Result<Vec<CohortData>>>()?
+            .into_iter()
+            .map(|cohort_data| {
+                (
+                    cohort_data.cohort.id.expect("Cohort ID is missing"),
+                    Arc::new(cohort_data),
+                )
+            })
+            .collect::<HashMap<i32, Arc<CohortData>>>();
 
         info!("Fetching features");
         let fields = sqlx::query_as::<_, Feature>(
@@ -56,23 +74,17 @@ impl AppState {
         .unwrap();
         let kb = KnowledgeBase::new(fields);
 
-        info!("Loading cohorts");
-        let mut cohort_id_to_info = hashlru::Cache::new(settings.cache_capacity);
-        for cohort_path in settings.cohort_paths.iter() {
-            let path = Path::new(cohort_path);
-            let info = CohortInfo::load(path)
-                .context(anyhow!("Failed to load cohort info for {}", cohort_path))?;
-            cohort_id_to_info.insert(info.cohort_id, Arc::new(info));
-            info!("Loaded cohort info for {}", cohort_path);
-        }
-
         info!("Initializing S3 client");
         let region = Region::new(settings.s3_region.clone());
         let shared_config = aws_config::from_env().region(region).load().await;
         let s3_client = Client::new(&shared_config);
 
         info!("Loading fit quality reference");
-        let fit_quality_file = File::open(&settings.fit_quality_file)?;
+        let fit_quality_path = root.join("fit_quality.parquet");
+        let fit_quality_file = File::open(&fit_quality_path).context(anyhow!(
+            "Failed to open fit quality file at {}",
+            fit_quality_path.display()
+        ))?;
         let fit_quality_df = ParquetReader::new(fit_quality_file).finish()?;
         let fit_quality_reference = fit_quality_df
             .column("gwas_r2")?
@@ -93,7 +105,7 @@ impl AppState {
             db,
             s3_client,
             knowledge_base: kb,
-            cohort_id_to_info: Arc::new(Mutex::new(cohort_id_to_info)),
+            cohort_id_to_data: Arc::new(Mutex::new(cohort_id_to_data)),
             fit_quality_reference: Arc::new(fit_quality_reference),
             queue: Arc::new(Mutex::new(Vec::new())),
             results: Arc::new(Mutex::new(HashMap::new())),

@@ -1,16 +1,11 @@
-use anyhow::{anyhow, Result};
+use anyhow::{anyhow, Context, Result};
 use faer::Mat;
 use faer_ext::polars::polars_to_faer_f32;
 use log::info;
 use polars::prelude::*;
-// use polars::{
-//     datatypes::Float32Type,
-//     io::{csv::read::CsvReadOptions, parquet::read::ParquetReader, SerReader},
-//     prelude::{DataFrame, IndexOrder},
-// };
 use serde::{Deserialize, Serialize};
 use sqlx::prelude::FromRow;
-use std::fs::{read_to_string, File};
+use std::fs::File;
 use std::str::FromStr;
 use std::{fmt::Display, path::Path};
 use tokio::time::Instant;
@@ -24,10 +19,10 @@ pub struct CohortResponse {
 
 #[derive(Clone, Debug, PartialEq, FromRow, Serialize)]
 pub struct Cohort {
-    pub id: i32,
+    pub id: Option<i32>,
     pub name: String,
-    pub root_directory: String,
-    pub num_covar: i32,
+    pub normalized_name: String,
+    pub num_covar: Option<i32>,
 }
 
 #[derive(Serialize, PartialEq, Clone, Copy, Debug, Deserialize, sqlx::Type)]
@@ -43,7 +38,25 @@ pub enum NodeType {
 
 impl Display for NodeType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{:?}", self)
+        let string = match self {
+            NodeType::Bool => "BOOL",
+            NodeType::Real => "REAL",
+            NodeType::Any => "ANY",
+        };
+        write!(f, "{}", string)
+    }
+}
+
+impl FromStr for NodeType {
+    type Err = anyhow::Error;
+
+    fn from_str(input: &str) -> Result<Self, Self::Err> {
+        match input {
+            "BOOL" => Ok(NodeType::Bool),
+            "REAL" => Ok(NodeType::Real),
+            "ANY" => Ok(NodeType::Any),
+            _ => Err(anyhow!("Invalid node type: {}", input)),
+        }
     }
 }
 
@@ -186,66 +199,56 @@ pub struct GetFeaturesRequest {
     pub cohort_id: i32,
 }
 
-pub struct CohortInfo {
-    pub cohort_id: i32,
-    pub cohort_name: String,
-    pub num_covar: i32,
+pub struct CohortData {
+    pub cohort: Cohort,
     pub features_df: DataFrame,
     pub left_inverse: Mat<f32>,
     pub gwas_df: DataFrame,
     pub covariance_matrix: Mat<f32>,
 }
 
-#[derive(Deserialize)]
-pub struct CohortMetadata {
-    pub cohort_id: Option<i32>,
-    pub cohort_name: String,
-    pub num_covar: Option<i32>,
-}
-
-impl CohortInfo {
-    pub fn load(root_directory: &Path) -> Result<CohortInfo> {
-        info!("Loading metadata for {}", root_directory.display());
-        let metadata_file_path = root_directory.join("metadata.toml");
-        let metadata = read_to_string(metadata_file_path)?;
-        let metadata = toml::from_str::<CohortMetadata>(&metadata)?;
-
-        info!("Loading features for {}", root_directory.display());
-        let features_file_path = root_directory.join("phenotype_data.parquet");
-        let features_file = File::open(features_file_path)?;
+impl CohortData {
+    pub fn load(cohort: Cohort, root_directory: &Path) -> Result<CohortData> {
+        let cohort_root = root_directory.join("cohorts").join(&cohort.normalized_name);
+        info!("Loading features for {}", cohort_root.display());
+        let features_file_path = cohort_root.join("phenotypes.parquet");
+        let features_file = File::open(features_file_path).context(anyhow!(
+            "Failed to open phenotype data file for {}",
+            cohort_root.display()
+        ))?;
         let features_df = ParquetReader::new(features_file).finish()?;
 
-        info!("Loading left inverse for {}", root_directory.display());
-        let left_inverse_file_path = root_directory.join("phenotype_left_inverse.parquet");
-        let left_inverse_file = File::open(left_inverse_file_path)?;
+        info!("Loading left inverse for {}", cohort_root.display());
+        let left_inverse_file_path = cohort_root.join("phenotype_left_inverse.parquet");
+        let left_inverse_file = File::open(left_inverse_file_path).context(anyhow!(
+            "Failed to open left inverse file for {}",
+            cohort_root.display()
+        ))?;
         let left_inverse_df = ParquetReader::new(left_inverse_file).finish()?;
         let left_inverse = polars_to_faer_f32(left_inverse_df.lazy())?
             .transpose()
             .to_owned();
 
-        info!("Loading GWAS for {}", root_directory.display());
-        let gwas_file_path = root_directory.join("gwas.parquet");
-        let gwas_file = File::open(gwas_file_path)?;
+        info!("Loading GWAS for {}", cohort_root.display());
+        let gwas_file_path = cohort_root.join("gwas.parquet");
+        let gwas_file = File::open(gwas_file_path).context(anyhow!(
+            "Failed to open GWAS file for {}",
+            cohort_root.display()
+        ))?;
         let gwas_df = ParquetReader::new(gwas_file).finish()?;
 
-        info!("Loading covariance matrix for {}", root_directory.display());
-        let covariance_matrix_file_path = root_directory.join("phenotypic_covariance.csv");
-        let covariance_matrix_df = CsvReadOptions::default()
-            .with_has_header(true)
-            .try_into_reader_with_file_path(Some(covariance_matrix_file_path))?
-            .finish()?
-            .drop("phenotype")?;
+        info!("Loading covariance matrix for {}", cohort_root.display());
+        let covariance_matrix_file_path = cohort_root.join("covariance.parquet");
+        let covariance_matrix_file = File::open(covariance_matrix_file_path).context(anyhow!(
+            "Failed to open covariance matrix file for {}",
+            cohort_root.display()
+        ))?;
+        let covariance_matrix_df = ParquetReader::new(covariance_matrix_file).finish()?;
         let covariance_matrix = polars_to_faer_f32(covariance_matrix_df.lazy())?;
+        info!("Finished loading cohort info for {}", cohort_root.display());
 
-        info!(
-            "Finished loading cohort info for {}",
-            root_directory.display()
-        );
-
-        Ok(CohortInfo {
-            cohort_id: metadata.cohort_id.expect("Cohort ID is missing"),
-            cohort_name: metadata.cohort_name,
-            num_covar: metadata.num_covar.expect("Number of covariates is missing"),
+        Ok(CohortData {
+            cohort,
             features_df,
             left_inverse,
             gwas_df,

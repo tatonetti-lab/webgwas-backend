@@ -92,7 +92,9 @@ async fn validate_phenotype(
     State(state): State<Arc<AppState>>,
     Json(request): Json<WebGWASRequest>,
 ) -> Json<ValidPhenotypeResponse> {
-    match validate_phenotype_definition(
+    info!("Validating phenotype definition");
+    let start = Instant::now();
+    let result = match validate_phenotype_definition(
         request.cohort_id,
         &request.phenotype_definition,
         &state.knowledge_base,
@@ -107,7 +109,10 @@ async fn validate_phenotype(
             message: format!("Phenotype definition is invalid: {}", err),
             phenotype_definition: request.phenotype_definition,
         }),
-    }
+    };
+    let duration = start.elapsed();
+    info!("Validating phenotype definition took {:?}", duration);
+    result
 }
 
 async fn get_phenotype_summary(
@@ -128,7 +133,7 @@ async fn get_phenotype_summary(
     };
     // 2. Apply the phenotype definition
     let cohort_info = {
-        let mut binding = state.cohort_id_to_info.lock().unwrap();
+        let binding = state.cohort_id_to_data.lock().unwrap();
         binding.get(&request.cohort_id).unwrap().clone()
     };
     let phenotype = apply_phenotype_definition(&definition, &cohort_info.features_df)

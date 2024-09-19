@@ -3,12 +3,14 @@ use clap::Parser;
 use faer::Mat;
 use faer_ext::polars::polars_to_faer_f32;
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
+use itertools::izip;
 use log::{error, info, warn};
 use mdav::mdav::mdav;
 use polars::lazy::dsl::{mean_horizontal, min_horizontal};
 use polars::prelude::*;
-use rusqlite::OptionalExtension;
+use rusqlite::{params, OptionalExtension};
 use std::ops::Sub;
+use std::str::FromStr;
 use std::{
     collections::{HashMap, HashSet},
     fmt::Write,
@@ -18,12 +20,12 @@ use std::{
     sync::Arc,
     time::Instant,
 };
+use webgwas_backend::models::NodeType;
 
 use webgwas_backend::{
-    models::{Cohort, CohortMetadata},
+    models::Cohort,
     regression::{
-        add_intercept, compute_covariance, compute_left_inverse, residualize_covariates,
-        transpose_vec_vec,
+        compute_covariance, compute_left_inverse, residualize_covariates, transpose_vec_vec,
     },
 };
 
@@ -47,10 +49,10 @@ fn main() {
         }
         Err(err) => {
             error!("Failed to register cohort: {}", err);
-            // app_state
-            //     .cleanup()
-            //     .context("Failed to cleanup app state")
-            //     .unwrap();
+            app_state
+                .cleanup()
+                .context("Failed to cleanup app state")
+                .unwrap();
         }
     }
 }
@@ -184,6 +186,10 @@ pub struct PhenoOptions {
     /// Keep n samples
     #[arg(long = "keep-n-samples")]
     keep_n_samples: Option<usize>,
+
+    /// Plink offset
+    #[arg(long = "plink-offset", default_value_t = false)]
+    plink_offset: bool,
 }
 
 pub struct LocalAppState {
@@ -191,8 +197,8 @@ pub struct LocalAppState {
     pub cohort_directory: PathBuf,
     pub db: rusqlite::Connection,
     pub feature_sets: FeatureSets,
-    pub metadata: CohortMetadata,
-    pub feature_variance: HashMap<String, f32>,
+    pub metadata: Cohort,
+    pub feature_info_map: HashMap<String, FeatureInfo>,
     pub overwrite: bool,
 }
 
@@ -205,6 +211,15 @@ pub struct FeatureSets {
     pub final_features: HashSet<String>,
 }
 
+#[derive(Clone, Debug)]
+pub struct FeatureInfo {
+    pub code: String,
+    pub name: String,
+    pub type_: Option<NodeType>,
+    pub sample_size: Option<f32>,
+    pub partial_variance: Option<f32>,
+}
+
 impl LocalAppState {
     pub fn new(cohort_name: String, overwrite: bool) -> Result<Self> {
         let home = std::env::var("HOME").expect("Failed to read $HOME");
@@ -215,20 +230,21 @@ impl LocalAppState {
         let sqlite_db_path = root_directory.join("webgwas.db");
         let db = initialize_database(&sqlite_db_path)?;
         let feature_sets = FeatureSets::default();
-        let metadata = CohortMetadata {
-            cohort_id: None,
-            cohort_name: cohort_name.clone(),
-            num_covar: None,
-        };
         let normalized_cohort_name = normalize_cohort_name(&cohort_name);
         let cohort_directory = root_directory.join("cohorts").join(&normalized_cohort_name);
+        let metadata = Cohort {
+            id: None,
+            name: cohort_name,
+            normalized_name: normalized_cohort_name,
+            num_covar: None,
+        };
         Ok(Self {
             root_directory,
             cohort_directory,
             db,
             feature_sets,
             metadata,
-            feature_variance: HashMap::new(),
+            feature_info_map: HashMap::new(),
             overwrite,
         })
     }
@@ -242,21 +258,19 @@ impl LocalAppState {
         gwas_options: GWASOptions,
         pheno_options: PhenoOptions,
     ) -> Result<()> {
-        info!("Registering cohort {}", self.metadata.cohort_name);
+        info!("Registering cohort {}", self.metadata.name);
         match self.check_cohort_does_not_exist() {
             Ok(_) => {
                 std::fs::create_dir_all(&self.cohort_directory)?;
             }
             Err(_) => {
                 if self.overwrite {
-                    warn!(
-                        "Cohort {} already exists, overwriting",
-                        self.metadata.cohort_name
-                    );
-                    std::fs::remove_dir_all(&self.cohort_directory)?;
+                    warn!("Cohort {} already exists, overwriting", self.metadata.name);
+                    let _ = std::fs::remove_dir_all(&self.cohort_directory);
                     std::fs::create_dir_all(&self.cohort_directory)?;
+                    let _ = self.delete_cohort_from_database();
                 } else {
-                    bail!("Cohort {} already exists", self.metadata.cohort_name);
+                    bail!("Cohort {} already exists", self.metadata.name);
                 }
             }
         }
@@ -266,20 +280,78 @@ impl LocalAppState {
             &gwas_files,
             &feature_info_file,
         )?;
+        self.process_feature_info_file(&feature_info_file)?;
         self.process_phenotypes_covariates(&pheno_file_spec, &covar_file_spec, pheno_options)?;
         self.process_gwas_files(gwas_options)?;
-
-        // TODO: Process the feature info file
-        self.process_feature_info_file(&feature_info_file)?;
-
-        bail!("Unimplement register_cohort")
+        info!("Writing feature info rows to the database");
+        let start = Instant::now();
+        let cohort_row = Cohort {
+            id: None,
+            name: self.metadata.name.clone(),
+            normalized_name: self.metadata.normalized_name.clone(),
+            num_covar: Some(self.metadata.num_covar.expect("num_covar is missing")),
+        };
+        self.db.execute(
+            "INSERT INTO cohort (name, normalized_name, num_covar) VALUES (?1, ?2, ?3)",
+            params![
+                &cohort_row.name,
+                &cohort_row.normalized_name,
+                &cohort_row.num_covar.unwrap(),
+            ],
+        )?;
+        let duration = start.elapsed();
+        info!("Writing cohort row to the database took {:?}", duration);
+        info!("Writing feature info rows to the database");
+        let start = Instant::now();
+        let cohort_id: i32 = self.db.query_row(
+            "SELECT id FROM cohort WHERE name = ?1",
+            [&cohort_row.name],
+            |row| row.get(0),
+        )?;
+        let tx = self.db.transaction()?;
+        for feature_info_row in self.feature_info_map.values() {
+            tx.execute(
+                "INSERT INTO feature (code, name, type, sample_size, cohort_id) VALUES (?1, ?2, ?3, ?4, ?5)",
+                params![
+                    &feature_info_row.code,
+                    &feature_info_row.name,
+                    &feature_info_row.type_.unwrap().to_string(),
+                    &feature_info_row.sample_size.unwrap(),
+                    &cohort_id,
+                ],
+            )?;
+        }
+        tx.commit()?;
+        let duration = start.elapsed();
+        info!(
+            "Writing feature info rows to the database took {:?}",
+            duration
+        );
+        Ok(())
     }
 
     pub fn check_cohort_does_not_exist(&mut self) -> Result<()> {
-        check_cohort_not_in_db(&self.metadata.cohort_name, &self.db)?;
+        check_cohort_not_in_db(&self.metadata.name, &self.db)?;
         if self.cohort_directory.exists() {
-            bail!("Cohort {} already exists", self.metadata.cohort_name);
+            bail!("Cohort {} already exists", self.metadata.name);
         }
+        Ok(())
+    }
+
+    pub fn delete_cohort_from_database(&mut self) -> Result<()> {
+        info!("Deleting cohort from the database");
+        let start = Instant::now();
+        let cohort_id: i32 = self.db.query_row(
+            "SELECT id FROM cohort WHERE name = ?1",
+            [&self.metadata.name],
+            |row| row.get(0),
+        )?;
+        let tx = self.db.transaction()?;
+        tx.execute("DELETE FROM feature WHERE cohort_id = ?1", [&cohort_id])?;
+        tx.execute("DELETE FROM cohort WHERE name = ?1", [&self.metadata.name])?;
+        tx.commit()?;
+        let duration = start.elapsed();
+        info!("Deleting cohort from the database took {:?}", duration);
         Ok(())
     }
 
@@ -398,19 +470,46 @@ impl LocalAppState {
         let duration = start.elapsed();
         info!("Reading phenotypes and covariates took {:?}", duration);
 
-        info!("Computing partial covariance matrix");
+        info!("Computing sample sizes");
         let start = Instant::now();
-        let y_resid = residualize_covariates(&data.x_covariates, &data.y_phenotypes)?;
-        let covariance_mat = compute_covariance(&y_resid, 1); // TODO: What is correct DDOF?
-        let duration = start.elapsed();
-        info!("Computing partial covariance matrix took {:?}", duration);
-        self.feature_variance = self
+        let dtypes: Vec<NodeType> = self
             .feature_sets
             .final_features
             .iter()
-            .enumerate()
-            .map(|(i, x)| (x.clone(), covariance_mat[(i, i)]))
+            .map(|x| self.feature_info_map.get(x).unwrap().type_.unwrap())
             .collect();
+        let sample_sizes =
+            compute_sample_size(&data.y_phenotypes, &dtypes, pheno_options.plink_offset)?;
+        let duration = start.elapsed();
+        info!("Computing sample size took {:?}", duration);
+        for (feature_code, sample_size) in self
+            .feature_sets
+            .final_features
+            .iter()
+            .zip(sample_sizes.iter())
+        {
+            self.feature_info_map
+                .get_mut(feature_code)
+                .unwrap()
+                .sample_size = Some(*sample_size);
+        }
+
+        info!("Computing partial covariance matrix");
+        let start = Instant::now();
+        let y_resid = residualize_covariates(&data.x_covariates, &data.y_phenotypes)?;
+        let ddof = self.metadata.num_covar.unwrap_or(0) as usize + 2;
+        let covariance_mat = compute_covariance(&y_resid, ddof);
+        let duration = start.elapsed();
+        info!("Computing partial covariance matrix took {:?}", duration);
+
+        info!("Setting feature partial variances");
+        for (i, feature_code) in self.feature_sets.final_features.iter().enumerate() {
+            self.feature_info_map
+                .get_mut(feature_code)
+                .unwrap()
+                .partial_variance = Some(covariance_mat[(i, i)]);
+        }
+        info!("Converting covariance matrix to dataframe");
         let start = Instant::now();
         let mut covariance_df = mat_to_polars(covariance_mat, &data.phenotype_names)?;
         let duration = start.elapsed();
@@ -427,9 +526,10 @@ impl LocalAppState {
             Some(n) => n,
             None => data.y_phenotypes.nrows(),
         };
-        let mut raw_phenotypes_with_intercept = data.y_phenotypes.clone();
-        add_intercept(&mut raw_phenotypes_with_intercept);
-        let raw_phenotypes = raw_phenotypes_with_intercept
+        // let mut raw_phenotypes_with_intercept = data.y_phenotypes.clone();
+        // add_intercept(&mut raw_phenotypes_with_intercept);
+        let raw_phenotypes = data
+            .y_phenotypes
             .row_iter()
             .take(n_samples)
             .map(|x| x.iter().copied().collect::<Vec<f32>>())
@@ -437,11 +537,32 @@ impl LocalAppState {
         let anonymized_phenotypes = mdav(raw_phenotypes, pheno_options.k_anonymity);
         let duration = start.elapsed();
         info!("Anonymizing phenotypes took {:?}", duration);
-        let mut phenotype_colnames = data.phenotype_names.clone();
-        phenotype_colnames.push("intercept".to_string());
         let start = Instant::now();
         let mut anonymized_phenotypes_df =
-            vec_vec_to_polars(anonymized_phenotypes.clone(), &phenotype_colnames)?;
+            vec_vec_to_polars(anonymized_phenotypes, &data.phenotype_names)?
+                .lazy()
+                .with_column(lit(1.0).alias("intercept"))
+                .collect()?;
+        let column_names = anonymized_phenotypes_df
+            .get_column_names()
+            .iter()
+            .map(|&x| x.to_string())
+            .collect::<Vec<String>>();
+        if pheno_options.plink_offset {
+            let mut df = anonymized_phenotypes_df.lazy();
+            for feature_code in self.feature_sets.final_features.iter() {
+                let dtype = self
+                    .feature_info_map
+                    .get(feature_code)
+                    .expect("Failed to get feature info")
+                    .type_
+                    .expect("Feature type is missing");
+                if dtype == NodeType::Bool {
+                    df = df.with_column(col(feature_code).sub(lit(2.0)))
+                }
+            }
+            anonymized_phenotypes_df = df.collect()?;
+        }
         let pheno_path = self.cohort_directory.join("phenotypes.parquet");
         write_parquet(&mut anonymized_phenotypes_df, &pheno_path)?;
         let duration = start.elapsed();
@@ -449,14 +570,14 @@ impl LocalAppState {
 
         info!("Computing left inverse");
         let start = Instant::now();
-        let anonymized_phenotypes = vec_vec_to_mat(anonymized_phenotypes);
-        let left_inverse = compute_left_inverse(&anonymized_phenotypes)?
+        let anonymized_phenotype_mat = polars_to_faer_f32(anonymized_phenotypes_df.lazy())?;
+        let left_inverse = compute_left_inverse(&anonymized_phenotype_mat)?
             .transpose()
             .to_owned();
         let duration = start.elapsed();
         info!("Computing left inverse took {:?}", duration);
         let start = Instant::now();
-        let mut left_inverse_df = mat_to_polars(left_inverse, &phenotype_colnames)?;
+        let mut left_inverse_df = mat_to_polars(left_inverse, &column_names)?;
         let left_inverse_path = self.cohort_directory.join("phenotype_left_inverse.parquet");
         write_parquet(&mut left_inverse_df, &left_inverse_path)?;
         let duration = start.elapsed();
@@ -511,7 +632,7 @@ impl LocalAppState {
                         .cast(DataType::Float32)
                         .alias(format!("{}_se", feature_name).as_str()),
                     col(&sample_size)
-                        .cast(DataType::Float32)
+                        .cast(DataType::Int32)
                         .alias(format!("{}_ss", feature_name).as_str()),
                 ])
                 .collect()
@@ -534,19 +655,21 @@ impl LocalAppState {
         let mut lazy_result_df = result_df.lazy().select([
             col("variant_id"),
             min_horizontal([col("^*_ss$")])?
-                .sub(lit(self.metadata.num_covar.unwrap_or(0) as f32 + 2.0))
+                .sub(lit(self.metadata.num_covar.unwrap_or(0) + 2))
                 .alias("degrees_of_freedom"),
             col("^*_beta$"),
             col("^*_se$"),
         ]);
         for feature_name in self.feature_sets.final_features.iter() {
             let feature_variance = self
-                .feature_variance
+                .feature_info_map
                 .get(feature_name)
                 .expect("Failed to get feature variance");
             lazy_result_df = lazy_result_df.with_column(
                 estimate_genotype_variance(
-                    lit(*feature_variance),
+                    lit(feature_variance
+                        .partial_variance
+                        .expect("Failed to get partial variance")),
                     col("degrees_of_freedom"),
                     col(format!("{}_beta", feature_name).as_str()),
                     col(format!("{}_se", feature_name).as_str()),
@@ -558,7 +681,9 @@ impl LocalAppState {
             .select([
                 col("variant_id"),
                 col("degrees_of_freedom"),
-                mean_horizontal([col("^*_gvar$")])?.alias("gvar"),
+                mean_horizontal([col("^*_gvar$")])?
+                    .cast(DataType::Float32)
+                    .alias("genotype_partial_variance"),
                 col("^*_beta$")
                     .name()
                     .map(|x| Ok(x.replace("_beta", "").into())),
@@ -576,21 +701,37 @@ impl LocalAppState {
     }
 
     pub fn process_feature_info_file(&mut self, feature_info_file: &FeatureInfoFile) -> Result<()> {
-        // TODO: Load the feature info file, write it to the database
-        // TODO: Compute the sample size for each feature in advance, then write that to the DB as
-        // well!
-        bail!("Unimplement process_feature_info_file")
+        info!("Reading feature info file");
+        let start = Instant::now();
+        let feature_info_df = CsvReadOptions::default()
+            .with_parse_options(
+                CsvParseOptions::default().with_separator(feature_info_file.feature_info_separator),
+            )
+            .with_columns(Some(Arc::new([
+                "code".into(),
+                "name".into(),
+                "type".into(),
+            ])))
+            .try_into_reader_with_file_path(Some(feature_info_file.feature_info_path.clone()))
+            .context("Failed to set feature info file as path")?
+            .finish()?;
+        let duration = start.elapsed();
+        info!("Reading feature info file took {:?}", duration);
+
+        info!("Converting feature info file to rows");
+        let start = Instant::now();
+        self.feature_info_map = feature_info_df_to_vec(&feature_info_df)?
+            .iter()
+            .filter(|x| self.feature_sets.final_features.contains(&x.code))
+            .map(|x| (x.code.clone(), x.clone()))
+            .collect();
+        let duration = start.elapsed();
+        info!("Converting feature info file to rows took {:?}", duration);
+        Ok(())
     }
 
-    pub fn cleanup(&self) -> Result<()> {
-        self.db.execute(
-            "DELETE FROM cohort WHERE name = ?",
-            [&self.metadata.cohort_name],
-        )?;
-        self.db.execute(
-            "DELETE FROM phenotype WHERE cohort_id = ?",
-            [&self.metadata.cohort_id],
-        )?;
+    pub fn cleanup(&mut self) -> Result<()> {
+        self.delete_cohort_from_database()?;
         std::fs::remove_dir_all(&self.cohort_directory)?;
         info!("Cleaned up all cohort data");
         Ok(())
@@ -603,30 +744,29 @@ pub fn normalize_cohort_name(cohort_name: &str) -> String {
 
 pub fn initialize_database(path: &Path) -> Result<rusqlite::Connection> {
     let db = rusqlite::Connection::open(path)?;
-    db.execute(
-        "CREATE TABLE IF NOT EXISTS cohort (
+    db.execute_batch(
+        "BEGIN;
+        CREATE TABLE IF NOT EXISTS cohort (
             id INTEGER NOT NULL,
-            name VARCHAR NOT NULL,
-            root_directory VARCHAR NOT NULL,
+            name TEXT NOT NULL,
+            normalized_name TEXT NOT NULL,
             num_covar INTEGER NOT NULL,
             PRIMARY KEY (id),
             UNIQUE (name),
-            UNIQUE (root_directory)
-        )",
-        (),
-    )?;
-    db.execute(
-        "CREATE TABLE IF NOT EXISTS phenotype (
+            UNIQUE (normalized_name)
+        );
+        CREATE TABLE IF NOT EXISTS feature (
                 id INTEGER NOT NULL,
-                code VARCHAR NOT NULL,
-                name VARCHAR NOT NULL,
-                type VARCHAR(4) NOT NULL,
+                code TEXT NOT NULL,
+                name TEXT NOT NULL,
+                type TEXT NOT NULL,
+                sample_size INTEGER NOT NULL,
                 cohort_id INTEGER,
                 PRIMARY KEY (id),
                 CONSTRAINT unique_feature UNIQUE (cohort_id, code, name),
                 FOREIGN KEY(cohort_id) REFERENCES cohort (id)
-        )",
-        (),
+        );
+        COMMIT;",
     )?;
     Ok(db)
 }
@@ -634,7 +774,7 @@ pub fn initialize_database(path: &Path) -> Result<rusqlite::Connection> {
 /// Check if the cohort already exists in the database
 pub fn check_cohort_not_in_db(cohort_name: &str, db: &rusqlite::Connection) -> Result<()> {
     let mut stmt = db.prepare(
-        "SELECT id, name, root_directory, num_covar
+        "SELECT id, name, normalized_name, num_covar
             FROM cohort WHERE name = ?",
     )?;
     let existing_cohort = stmt
@@ -642,7 +782,7 @@ pub fn check_cohort_not_in_db(cohort_name: &str, db: &rusqlite::Connection) -> R
             Ok(Cohort {
                 id: row.get(0)?,
                 name: row.get(1)?,
-                root_directory: row.get(2)?,
+                normalized_name: row.get(2)?,
                 num_covar: row.get(3)?,
             })
         })
@@ -761,7 +901,10 @@ pub fn read_phenotypes_covariates(
     })
 }
 
-pub fn mat_to_polars(mat: Mat<f32>, column_names: &[String]) -> Result<DataFrame> {
+pub fn mat_to_polars<'a, T>(mat: Mat<f32>, column_names: &'a [T]) -> Result<DataFrame>
+where
+    PlSmallStr: From<&'a T>,
+{
     if mat.ncols() != column_names.len() {
         bail!("Matrix and column names must have the same length");
     }
@@ -817,4 +960,62 @@ pub fn estimate_genotype_variance(
     std_error: Expr,
 ) -> Expr {
     phenotype_variance / (degrees_of_freedom * std_error.pow(2) + beta.pow(2))
+}
+
+pub fn count_unique(x: Vec<f32>) -> usize {
+    let mut copy = x.clone();
+    copy.sort_by(|a, b| a.partial_cmp(b).unwrap());
+    copy.dedup();
+    copy.len()
+}
+
+pub fn compute_sample_size(
+    data: &Mat<f32>,
+    dtypes: &[NodeType],
+    plink_offset: bool,
+) -> Result<Vec<f32>> {
+    if data.ncols() != dtypes.len() {
+        bail!("Data and dtypes must have the same length");
+    }
+    let mut sample_size = Vec::new();
+    for (col, dtype) in data.col_iter().zip(dtypes.iter()) {
+        let values = col.iter().copied();
+        if dtype == &NodeType::Bool && plink_offset {
+            let sum = values.map(|x| x - 2.0).sum();
+            sample_size.push(sum);
+        } else if dtype == &NodeType::Bool {
+            let sum = values.sum();
+            sample_size.push(sum);
+        } else if dtype == &NodeType::Real {
+            let sum = values.filter(|x| !x.is_nan()).count() as f32;
+            sample_size.push(sum);
+        }
+    }
+    Ok(sample_size)
+}
+
+pub fn feature_info_df_to_vec(feature_info_df: &DataFrame) -> Result<Vec<FeatureInfo>> {
+    izip!(
+        feature_info_df.column("code")?.str()?.into_iter(),
+        feature_info_df.column("name")?.str()?.into_iter(),
+        feature_info_df.column("type")?.str()?.into_iter(),
+    )
+    .map(|(code, name, type_)| {
+        Some(FeatureInfo {
+            code: code?.to_string(),
+            name: name?.to_string(),
+            type_: Some(NodeType::from_str(type_?).unwrap()),
+            sample_size: None,
+            partial_variance: None,
+        })
+    })
+    .collect::<Option<Vec<FeatureInfo>>>()
+    .context("Failed to collect feature info rows")
+}
+
+pub struct FeatureInsertRow {
+    pub code: String,
+    pub name: String,
+    pub type_: String,
+    pub sample_size: f32,
 }
