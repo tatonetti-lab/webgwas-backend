@@ -3,6 +3,7 @@ use aws_sdk_s3::presigning::PresigningConfig;
 use faer::Col;
 use log::info;
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
 use tokio::time::Duration;
@@ -41,8 +42,9 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
         status: WebGWASResultStatus::Queued,
         error_msg: None,
         url: None,
+        local_result_file: None,
     };
-    state.results.lock().unwrap().insert(request.id, result);
+    state.results.lock().unwrap().insert(result);
     // 1. Apply the phenotype and compute the projection coefficents
     let cohort_info = {
         let binding = state.cohort_id_to_data.lock().unwrap();
@@ -77,14 +79,14 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
     info!("Computing projection variance took {:?}", duration);
 
     // 3. Compute GWAS
-    let output_path = format!("{}.tsv.zst", request.id);
+    let output_path = PathBuf::from(format!("{}.tsv.zst", request.id));
     let start = Instant::now();
     run_igwas_df_impl(
         &cohort_info.gwas_df,
         &mut projection,
         projection_variance,
         cohort_info.cohort.num_covar.expect("Num_covar is missing") as usize,
-        output_path.to_string(),
+        &output_path,
         16,
     )?;
     let duration = start.elapsed();
@@ -120,8 +122,6 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
     });
     let duration = start.elapsed();
     info!("Uploading took {:?}", duration);
-    // Remove the file
-    std::fs::remove_file(output_path).context("Failed to remove the local result file")?;
 
     info!("Overall took {:?}", total_duration);
     let result = WebGWASResult {
@@ -129,18 +129,19 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
         status: WebGWASResultStatus::Done,
         error_msg: None,
         url: Some(url),
+        local_result_file: Some(output_path.to_path_buf()),
     };
-    state.results.lock().unwrap().insert(request.id, result);
+    state.results.lock().unwrap().insert(result);
     Ok(())
 }
 
 pub async fn upload_object(
     client: &aws_sdk_s3::Client,
-    file_name: &str,
+    file_name: &Path,
     bucket_name: &str,
     key: &str,
 ) -> Result<aws_sdk_s3::operation::put_object::PutObjectOutput> {
-    let body = aws_sdk_s3::primitives::ByteStream::from_path(Path::new(file_name)).await?;
+    let body = aws_sdk_s3::primitives::ByteStream::from_path(file_name).await?;
     let result = client
         .put_object()
         .bucket(bucket_name)

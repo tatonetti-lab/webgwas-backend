@@ -5,7 +5,7 @@ use itertools::izip;
 use log::debug;
 use polars::prelude::*;
 use statrs::distribution::{ContinuousCDF, StudentsT};
-use std::{fs::File, io::BufWriter};
+use std::{fs::File, io::BufWriter, path::Path};
 use zstd::stream::AutoFinishEncoder;
 
 #[derive(Debug)]
@@ -303,7 +303,7 @@ pub fn get_writer(path: &str) -> Result<arrow::csv::Writer<AutoFinishEncoder<Buf
         .build(compressed_writer))
 }
 
-pub fn write_dataframe(df: &mut DataFrame, path: &str, n_threads: usize) -> Result<()> {
+pub fn write_dataframe(df: &mut DataFrame, path: &Path, n_threads: usize) -> Result<()> {
     let file = File::create(path)?;
     let compressed_writer = zstd::Encoder::new(file, 3)?.auto_finish();
     CsvWriter::new(compressed_writer)
@@ -318,7 +318,7 @@ pub fn run_igwas_df_impl(
     projection: &mut Projection,
     projection_variance: f32,
     n_covariates: usize,
-    output_path: String,
+    output_path: &Path,
     n_threads: usize,
 ) -> Result<()> {
     debug!("Computing batch stats");
@@ -328,7 +328,7 @@ pub fn run_igwas_df_impl(
     debug!("Converting results to dataframe");
     let mut results_df = results_to_dataframe(result_stats)?;
     debug!("Writing results");
-    write_dataframe(&mut results_df, &output_path, n_threads)?;
+    write_dataframe(&mut results_df, output_path, n_threads)?;
     Ok(())
 }
 

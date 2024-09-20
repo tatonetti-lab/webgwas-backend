@@ -34,7 +34,7 @@ pub struct AppState {
     pub cohort_id_to_data: Arc<Mutex<HashMap<i32, Arc<CohortData>>>>,
     pub fit_quality_reference: Arc<Vec<PhenotypeFitQuality>>,
     pub queue: Arc<Mutex<Vec<WebGWASRequestId>>>,
-    pub results: Arc<Mutex<hashlru::Cache<Uuid, WebGWASResult>>>,
+    pub results: Arc<Mutex<ResultsCache>>,
 }
 
 impl AppState {
@@ -100,7 +100,7 @@ impl AppState {
             .collect::<Option<Vec<PhenotypeFitQuality>>>()
             .context("Failed to load fit quality reference")?;
 
-        let results = Arc::new(Mutex::new(hashlru::Cache::new(settings.cache_capacity)));
+        let results = Arc::new(Mutex::new(ResultsCache::new(settings.cache_capacity)));
 
         let state = AppState {
             settings,
@@ -114,5 +114,33 @@ impl AppState {
         };
         info!("Finished initializing app state");
         Ok(state)
+    }
+}
+
+pub struct ResultsCache {
+    id_to_result: hashlru::Cache<Uuid, WebGWASResult>,
+}
+
+impl ResultsCache {
+    pub fn new(capacity: usize) -> Self {
+        Self {
+            id_to_result: hashlru::Cache::new(capacity),
+        }
+    }
+
+    pub fn insert(&mut self, result: WebGWASResult) {
+        if self.id_to_result.is_full() {
+            let lru_key = *self.id_to_result.lru().unwrap();
+            let lru_value = self.id_to_result.remove(&lru_key).expect("No value found");
+            let file_path = lru_value.local_result_file.expect("No local result file");
+            std::fs::remove_file(file_path)
+                .context("Failed to remove local result file")
+                .unwrap();
+        }
+        self.id_to_result.insert(result.request_id, result);
+    }
+
+    pub fn get(&mut self, id: &Uuid) -> Option<&WebGWASResult> {
+        self.id_to_result.get(id)
     }
 }

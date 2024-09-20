@@ -6,6 +6,7 @@ use polars::prelude::*;
 use serde::{Deserialize, Serialize};
 use sqlx::prelude::FromRow;
 use std::fs::File;
+use std::path::PathBuf;
 use std::str::FromStr;
 use std::{fmt::Display, path::Path};
 use tokio::time::Instant;
@@ -137,6 +138,8 @@ pub struct WebGWASResult {
     pub error_msg: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub url: Option<String>,
+    #[serde(skip_serializing)]
+    pub local_result_file: Option<PathBuf>,
 }
 
 pub fn round_to_decimals<S>(value: &f32, serializer: S) -> Result<S::Ok, S::Error>

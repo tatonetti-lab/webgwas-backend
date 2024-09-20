@@ -270,6 +270,7 @@ async fn get_igwas_results(
             status: WebGWASResultStatus::Error,
             error_msg: Some(format!("No result found for request {}", request_id)),
             url: None,
+            local_result_file: None,
         }),
     }
 }
