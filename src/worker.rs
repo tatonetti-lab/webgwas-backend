@@ -93,6 +93,14 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
     let duration = start.elapsed();
     info!("GWAS took {:?}", duration);
     let total_duration = request.request_time.elapsed();
+    let result = WebGWASResult {
+        request_id: request.id,
+        status: WebGWASResultStatus::Uploading,
+        error_msg: None,
+        url: None,
+        local_result_file: Some(output_path.clone()),
+    };
+    state.results.lock().unwrap().insert(result);
 
     let start = Instant::now();
     let key = format!("{}/{}.tsv.zst", state.settings.s3_result_path, request.id);
