@@ -899,42 +899,37 @@ pub fn read_phenotypes_covariates(
     covar_file_spec: &CovarFile,
     add_intercept: bool,
 ) -> Result<PhenotypesCovariates> {
-    let pheno_df = CsvReadOptions::default()
-        .with_parse_options(
-            CsvParseOptions::default().with_separator(pheno_file_spec.pheno_separator),
-        )
-        .try_into_reader_with_file_path(Some(pheno_file_spec.pheno_path.clone()))
-        .context("Failed to set phenotype file as path")?
-        .finish()?;
-    let covar_df = CsvReadOptions::default()
-        .with_parse_options(
-            CsvParseOptions::default().with_separator(covar_file_spec.covar_separator),
-        )
-        .try_into_reader_with_file_path(Some(covar_file_spec.covar_path.clone()))
-        .context("Failed to set covariate file as path")?
-        .finish()?;
-    info!("Merging phenotype and covariate files");
-    let merged_df = pheno_df.join(
-        &covar_df,
-        [pheno_file_spec.pheno_person_id_column.as_str()],
-        [covar_file_spec.covar_person_id_column.as_str()],
-        JoinArgs::new(JoinType::Inner),
-    )?;
-    let pheno_cols = pheno_df
-        .select(pheno_cols)?
-        .get_column_names()
-        .into_iter()
-        .map(|x| x.to_string())
-        .collect::<Vec<String>>();
-    let y_df = merged_df.select(pheno_cols.clone())?.lazy();
-    let y = polars_to_faer_f32(y_df)?;
+    let mut select_cols = pheno_cols.iter().map(col).collect::<Vec<Expr>>();
+    select_cols.push(col(&pheno_file_spec.pheno_person_id_column));
+    let pheno_df = LazyCsvReader::new(&pheno_file_spec.pheno_path)
+        .with_separator(pheno_file_spec.pheno_separator)
+        .finish()
+        .context("Failed to read phenotype file")?
+        .select(&select_cols);
+    let mut covar_df = LazyCsvReader::new(&covar_file_spec.covar_path)
+        .with_separator(covar_file_spec.covar_separator)
+        .finish()
+        .context("Failed to read covariate file")?;
     let covar_cols = covar_df
-        .drop(covar_file_spec.covar_person_id_column.as_str())?
-        .get_column_names()
-        .into_iter()
-        .map(|x| col(x.to_string()))
+        .collect_schema()?
+        .iter_names_cloned()
+        .map(col)
         .collect::<Vec<Expr>>();
-    let mut x_lazy = merged_df.lazy().select(covar_cols);
+    info!("Merging phenotype and covariate files");
+    let merged_df = pheno_df.inner_join(
+        covar_df,
+        col(&pheno_file_spec.pheno_person_id_column),
+        col(&covar_file_spec.covar_person_id_column),
+    );
+    let y_df = merged_df.clone().select(
+        select_cols
+            .iter()
+            .take(pheno_cols.len())
+            .cloned()
+            .collect::<Vec<Expr>>(),
+    );
+    let y = polars_to_faer_f32(y_df).context("Failed to convert phenotypes to faer")?;
+    let mut x_lazy = merged_df.select(covar_cols);
     if add_intercept {
         x_lazy = x_lazy.with_column(lit(1.0).alias("intercept"));
     }
@@ -947,7 +942,7 @@ pub fn read_phenotypes_covariates(
     Ok(PhenotypesCovariates {
         y_phenotypes: y,
         x_covariates: x,
-        phenotype_names: pheno_cols,
+        phenotype_names: pheno_cols.to_vec(),
     })
 }
 
