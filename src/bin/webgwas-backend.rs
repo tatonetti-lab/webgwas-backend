@@ -10,15 +10,15 @@ use itertools::izip;
 use log::info;
 use phenotype_definitions::{apply_phenotype_definition, validate_phenotype_definition};
 use polars::prelude::*;
-use std::thread;
 use std::{iter::repeat, sync::Arc};
+use std::{path::PathBuf, thread};
 use tokio::time::Instant;
 use tower_http::cors::CorsLayer;
 use uuid::Uuid;
 
 use webgwas_backend::models::{
     ApproximatePhenotypeValues, CohortResponse, FeatureResponse, GetFeaturesRequest,
-    PhenotypeFitQuality, PhenotypeSummary, ValidPhenotypeResponse, WebGWASRequest,
+    PhenotypeFitQuality, PhenotypeSummary, PvaluesResponse, ValidPhenotypeResponse, WebGWASRequest,
     WebGWASRequestId, WebGWASResponse, WebGWASResult, WebGWASResultStatus,
 };
 use webgwas_backend::phenotype_definitions;
@@ -51,6 +51,10 @@ async fn main() {
         .route("/api/phenotype_summary", post(get_phenotype_summary))
         .route("/api/igwas", post(post_igwas))
         .route("/api/igwas/results/:request_id", get(get_igwas_results))
+        .route(
+            "/api/igwas/results/pvalues/:request_id",
+            get(get_igwas_pvalues),
+        )
         .layer(CorsLayer::permissive())
         .with_state(state);
 
@@ -273,4 +277,56 @@ async fn get_igwas_results(
             local_result_file: None,
         }),
     }
+}
+
+#[axum::debug_handler]
+async fn get_igwas_pvalues(
+    State(state): State<Arc<AppState>>,
+    Path(request_id): Path<Uuid>,
+) -> Json<PvaluesResponse> {
+    info!("Fetching WebGWAS p-values for {}", request_id);
+    match state.results.lock().unwrap().get(&request_id) {
+        Some(results) => match &results.local_result_file {
+            Some(path) => match load_pvalues(path.to_path_buf()) {
+                Ok(pvalues) => Json(PvaluesResponse {
+                    request_id,
+                    status: WebGWASResultStatus::Done,
+                    error_msg: None,
+                    pvalues: Some(pvalues),
+                }),
+                Err(err) => Json(PvaluesResponse {
+                    request_id,
+                    status: WebGWASResultStatus::Error,
+                    error_msg: Some(format!("Failed to load p-values: {}", err)),
+                    pvalues: None,
+                }),
+            },
+            None => Json(PvaluesResponse {
+                request_id,
+                status: WebGWASResultStatus::Error,
+                error_msg: Some(format!("No local file found for request {}", request_id)),
+                pvalues: None,
+            }),
+        },
+        None => Json(PvaluesResponse {
+            request_id,
+            status: WebGWASResultStatus::Error,
+            error_msg: Some(format!("No result found for request {}", request_id)),
+            pvalues: None,
+        }),
+    }
+}
+
+fn load_pvalues(path: PathBuf) -> Result<Vec<f32>> {
+    let schema_override = Schema::from_iter(vec![("neg_log_p_value".into(), DataType::Float32)]);
+    CsvReadOptions::default()
+        .with_schema_overwrite(Some(Arc::new(schema_override)))
+        .with_parse_options(CsvParseOptions::default().with_separator(b'\t'))
+        .try_into_reader_with_file_path(Some(path))?
+        .finish()?
+        .column("neg_log_p_value")?
+        .f32()?
+        .iter()
+        .map(|x| x.context("Failed to get p-value"))
+        .collect::<Result<Vec<f32>>>()
 }

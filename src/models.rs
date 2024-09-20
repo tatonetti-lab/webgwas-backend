@@ -118,6 +118,7 @@ pub struct WebGWASRequestId {
 #[serde(rename_all = "lowercase")]
 pub enum WebGWASResultStatus {
     Queued,
+    Uploading,
     Done,
     Error,
 }
@@ -140,6 +141,16 @@ pub struct WebGWASResult {
     pub url: Option<String>,
     #[serde(skip_serializing)]
     pub local_result_file: Option<PathBuf>,
+}
+
+#[derive(Serialize)]
+pub struct PvaluesResponse {
+    pub request_id: Uuid,
+    pub status: WebGWASResultStatus,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error_msg: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pvalues: Option<Vec<f32>>,
 }
 
 pub fn round_to_decimals<S>(value: &f32, serializer: S) -> Result<S::Ok, S::Error>
