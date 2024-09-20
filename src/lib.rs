@@ -66,7 +66,7 @@ impl AppState {
 
         info!("Fetching features");
         let fields = sqlx::query_as::<_, Feature>(
-            "SELECT id, code, name, type as node_type, cohort_id FROM feature",
+            "SELECT id, code, name, type as node_type, sample_size, cohort_id FROM feature",
         )
         .fetch_all(&db)
         .await

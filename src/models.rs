@@ -11,7 +11,7 @@ use std::{fmt::Display, path::Path};
 use tokio::time::Instant;
 use uuid::Uuid;
 
-#[derive(Serialize)]
+#[derive(Serialize, FromRow, Debug)]
 pub struct CohortResponse {
     pub id: i32,
     pub name: String,
@@ -60,13 +60,13 @@ impl FromStr for NodeType {
     }
 }
 
-#[derive(Serialize)]
+#[derive(Serialize, FromRow, Debug)]
 pub struct FeatureResponse {
-    pub id: i32,
     pub code: String,
     pub name: String,
     #[serde(rename = "type")]
     pub node_type: NodeType,
+    pub sample_size: i32,
 }
 
 #[derive(Clone, Debug, PartialEq, FromRow, Serialize)]
@@ -75,6 +75,7 @@ pub struct Feature {
     pub code: String,
     pub name: String,
     pub node_type: NodeType,
+    pub sample_size: i32,
     pub cohort_id: i32,
 }
 
@@ -410,6 +411,7 @@ impl From<ParsingNode> for Node {
                 code: field_code,
                 name: "".to_string(),
                 node_type: NodeType::Any,
+                sample_size: 0,
                 cohort_id: 0,
             }),
             ParsingNode::Operator(operator) => Node::Operator(operator),

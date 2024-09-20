@@ -17,9 +17,9 @@ use tower_http::cors::CorsLayer;
 use uuid::Uuid;
 
 use webgwas_backend::models::{
-    ApproximatePhenotypeValues, Cohort, Feature, GetFeaturesRequest, PhenotypeFitQuality,
-    PhenotypeSummary, ValidPhenotypeResponse, WebGWASRequest, WebGWASRequestId, WebGWASResponse,
-    WebGWASResult, WebGWASResultStatus,
+    ApproximatePhenotypeValues, CohortResponse, FeatureResponse, GetFeaturesRequest,
+    PhenotypeFitQuality, PhenotypeSummary, ValidPhenotypeResponse, WebGWASRequest,
+    WebGWASRequestId, WebGWASResponse, WebGWASResult, WebGWASResultStatus,
 };
 use webgwas_backend::phenotype_definitions;
 use webgwas_backend::regression::regress_left_inverse_vec;
@@ -60,8 +60,9 @@ async fn main() {
 }
 
 /// Get all cohorts
-async fn get_cohorts(State(state): State<Arc<AppState>>) -> Json<Vec<Cohort>> {
-    let result = sqlx::query_as::<_, Cohort>("SELECT * FROM cohort")
+async fn get_cohorts(State(state): State<Arc<AppState>>) -> Json<Vec<CohortResponse>> {
+    info!("Fetching cohorts");
+    let result = sqlx::query_as::<_, CohortResponse>("SELECT id, name FROM cohort")
         .fetch_all(&state.db)
         .await
         .context("Failed to fetch cohorts")
@@ -73,11 +74,12 @@ async fn get_cohorts(State(state): State<Arc<AppState>>) -> Json<Vec<Cohort>> {
 async fn get_features(
     request: Query<GetFeaturesRequest>,
     State(state): State<Arc<AppState>>,
-) -> Result<Json<Vec<Feature>>, WebGWASError> {
+) -> Result<Json<Vec<FeatureResponse>>, WebGWASError> {
     let request = request.0;
     info!("Fetching features for cohort {}", request.cohort_id);
-    let result = sqlx::query_as::<_, Feature>(
-        "SELECT id, code, name, type as node_type, cohort_id FROM feature WHERE cohort_id = $1",
+    let result = sqlx::query_as::<_, FeatureResponse>(
+        "SELECT code, name, type as node_type, sample_size
+        FROM feature WHERE cohort_id = $1",
     )
     .bind(request.cohort_id)
     .fetch_all(&state.db)
