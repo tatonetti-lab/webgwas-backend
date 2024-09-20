@@ -79,7 +79,8 @@ async fn get_features(
     info!("Fetching features for cohort {}", request.cohort_id);
     let result = sqlx::query_as::<_, FeatureResponse>(
         "SELECT code, name, type as node_type, sample_size
-        FROM feature WHERE cohort_id = $1",
+        FROM feature WHERE cohort_id = $1
+        ORDER BY sample_size DESC",
     )
     .bind(request.cohort_id)
     .fetch_all(&state.db)
