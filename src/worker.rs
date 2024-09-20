@@ -79,7 +79,9 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
     info!("Computing projection variance took {:?}", duration);
 
     // 3. Compute GWAS
-    let output_path = PathBuf::from(format!("{}.tsv.zst", request.id));
+    let output_path = state
+        .root_directory
+        .join(format!("results/{}.tsv.zst", request.id));
     let start = Instant::now();
     run_igwas_df_impl(
         &cohort_info.gwas_df,
