@@ -3,7 +3,6 @@ use aws_sdk_s3::presigning::PresigningConfig;
 use faer::Col;
 use log::info;
 use std::path::Path;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
 use tokio::time::Duration;
