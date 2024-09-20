@@ -150,6 +150,8 @@ pub struct PvaluesResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_msg: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
+    pub variant_ids: Option<Vec<String>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
     pub pvalues: Option<Vec<f32>>,
 }
 
