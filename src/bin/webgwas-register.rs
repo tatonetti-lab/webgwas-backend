@@ -49,10 +49,13 @@ fn main() {
         }
         Err(err) => {
             error!("Failed to register cohort: {}", err);
-            app_state
-                .cleanup()
-                .context("Failed to cleanup app state")
-                .unwrap();
+            if !args.no_cleanup {
+                info!("Cleaning up");
+                app_state
+                    .cleanup()
+                    .context("Failed to cleanup app state")
+                    .unwrap();
+            }
         }
     }
 }
@@ -91,6 +94,10 @@ struct Cli {
     // Overwrite existing cohort
     #[arg(long = "overwrite", default_value_t = false)]
     overwrite: bool,
+
+    // Don't clean up if an error occurs
+    #[arg(long = "no-cleanup", default_value_t = false)]
+    no_cleanup: bool,
 }
 
 #[derive(Parser, Debug)]
