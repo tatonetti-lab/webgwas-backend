@@ -7,7 +7,7 @@ use phenotype_definitions::KnowledgeBase;
 use polars::io::parquet::read::ParquetReader;
 use polars::prelude::*;
 use sqlx::SqlitePool;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::{
     collections::HashMap,
     fs::File,
@@ -27,6 +27,7 @@ use crate::config::Settings;
 use crate::models::{CohortData, Feature, PhenotypeFitQuality, WebGWASRequestId, WebGWASResult};
 
 pub struct AppState {
+    pub root_directory: PathBuf,
     pub settings: Settings,
     pub db: SqlitePool,
     pub s3_client: aws_sdk_s3::Client,
@@ -103,6 +104,7 @@ impl AppState {
         let results = Arc::new(Mutex::new(ResultsCache::new(settings.cache_capacity)));
 
         let state = AppState {
+            root_directory: root,
             settings,
             db,
             s3_client,
