@@ -341,11 +341,17 @@ impl LocalAppState {
     pub fn delete_cohort_from_database(&mut self) -> Result<()> {
         info!("Deleting cohort from the database");
         let start = Instant::now();
-        let cohort_id: i32 = self.db.query_row(
+        let cohort_id: i32 = match self.db.query_row(
             "SELECT id FROM cohort WHERE name = ?1",
             [&self.metadata.name],
             |row| row.get(0),
-        )?;
+        ) {
+            Ok(id) => id,
+            Err(err) => {
+                warn!("Cohort was not found in the database: {}", err);
+                return Ok(());
+            }
+        };
         let tx = self.db.transaction()?;
         tx.execute("DELETE FROM feature WHERE cohort_id = ?1", [&cohort_id])?;
         tx.execute("DELETE FROM cohort WHERE name = ?1", [&self.metadata.name])?;
@@ -365,14 +371,47 @@ impl LocalAppState {
         // Find features in the phenotype file and count the number of covariates
         info!("Registering phenotypes and covariates");
         self.register_phenotypes_covariates(pheno_file_spec, covar_file_spec)?;
+        info!(
+            "Found {} phenotypes e.g. {}",
+            self.feature_sets.phenotype_file.len(),
+            self.feature_sets
+                .phenotype_file
+                .iter()
+                .take(2)
+                .map(|x| x.to_string())
+                .collect::<Vec<String>>()
+                .join(", ")
+        );
 
         // Find features in the GWAS files
         info!("Registering GWAS files");
         self.register_gwas_files(gwas_files)?;
+        info!(
+            "Found {} GWAS files e.g. {}",
+            self.feature_sets.gwas_files.len(),
+            self.feature_sets
+                .gwas_files
+                .iter()
+                .take(2)
+                .map(|x| x.to_string())
+                .collect::<Vec<String>>()
+                .join(", ")
+        );
 
         // Find features in the feature info file
         info!("Registering feature info file");
         self.register_feature_info(feature_info_file)?;
+        info!(
+            "Found {} feature info rows e.g. {}",
+            self.feature_sets.info_file.len(),
+            self.feature_sets
+                .info_file
+                .iter()
+                .take(2)
+                .map(|x| x.to_string())
+                .collect::<Vec<String>>()
+                .join(", ")
+        );
 
         // Find the shared features
         self.feature_sets.final_features = self
@@ -389,6 +428,9 @@ impl LocalAppState {
             .collect();
         let num_final_features = self.feature_sets.final_features.len();
         info!("Found {} shared features", num_final_features);
+        if num_final_features == 0 {
+            bail!("No shared features found");
+        }
         Ok(())
     }
 
@@ -729,7 +771,12 @@ impl LocalAppState {
     }
 
     pub fn cleanup(&mut self) -> Result<()> {
-        self.delete_cohort_from_database()?;
+        match self.delete_cohort_from_database() {
+            Ok(_) => {}
+            Err(err) => {
+                warn!("Failed to delete cohort from database: {}", err);
+            }
+        }
         std::fs::remove_dir_all(&self.cohort_directory)?;
         info!("Cleaned up all cohort data");
         Ok(())
@@ -892,6 +939,11 @@ pub fn read_phenotypes_covariates(
         x_lazy = x_lazy.with_column(lit(1.0).alias("intercept"));
     }
     let x = polars_to_faer_f32(x_lazy)?;
+    info!(
+        "Read phenotypes (shape {:?}) and covariates (shape {:?})",
+        y.shape(),
+        x.shape()
+    );
     Ok(PhenotypesCovariates {
         y_phenotypes: y,
         x_covariates: x,
