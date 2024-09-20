@@ -34,7 +34,7 @@ pub struct AppState {
     pub cohort_id_to_data: Arc<Mutex<HashMap<i32, Arc<CohortData>>>>,
     pub fit_quality_reference: Arc<Vec<PhenotypeFitQuality>>,
     pub queue: Arc<Mutex<Vec<WebGWASRequestId>>>,
-    pub results: Arc<Mutex<HashMap<Uuid, WebGWASResult>>>,
+    pub results: Arc<Mutex<hashlru::Cache<Uuid, WebGWASResult>>>,
 }
 
 impl AppState {
@@ -100,6 +100,8 @@ impl AppState {
             .collect::<Option<Vec<PhenotypeFitQuality>>>()
             .context("Failed to load fit quality reference")?;
 
+        let results = Arc::new(Mutex::new(hashlru::Cache::new(settings.cache_capacity)));
+
         let state = AppState {
             settings,
             db,
@@ -108,7 +110,7 @@ impl AppState {
             cohort_id_to_data: Arc::new(Mutex::new(cohort_id_to_data)),
             fit_quality_reference: Arc::new(fit_quality_reference),
             queue: Arc::new(Mutex::new(Vec::new())),
-            results: Arc::new(Mutex::new(HashMap::new())),
+            results,
         };
         info!("Finished initializing app state");
         Ok(state)
