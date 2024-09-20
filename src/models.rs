@@ -3,7 +3,7 @@ use faer::Mat;
 use faer_ext::polars::polars_to_faer_f32;
 use log::info;
 use polars::prelude::*;
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Serialize, Serializer};
 use sqlx::prelude::FromRow;
 use std::fs::File;
 use std::path::PathBuf;
@@ -151,8 +151,30 @@ pub struct PvaluesResponse {
     pub error_msg: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub variant_ids: Option<Vec<String>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
+    #[serde(
+        skip_serializing_if = "Option::is_none",
+        serialize_with = "serialize_vec_f32_rounded"
+    )]
     pub pvalues: Option<Vec<f32>>,
+}
+
+fn serialize_vec_f32_rounded<S>(values: &Option<Vec<f32>>, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    // Round each value to three decimal places
+    let rounded_values: Vec<f32> = values
+        .as_ref()
+        .unwrap()
+        .iter()
+        .map(|&v| {
+            // Multiply by 1000, round to the nearest integer, then divide back
+            (v * 1000.0).round() / 1000.0
+        })
+        .collect();
+
+    // Serialize the rounded values
+    rounded_values.serialize(serializer)
 }
 
 pub fn round_to_decimals<S>(value: &f32, serializer: S) -> Result<S::Ok, S::Error>
