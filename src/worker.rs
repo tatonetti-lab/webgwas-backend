@@ -102,42 +102,48 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
     };
     state.results.lock().unwrap().insert(result);
 
-    let start = Instant::now();
-    let key = format!("{}/{}.tsv.zst", state.settings.s3_result_path, request.id);
-    let rt = tokio::runtime::Runtime::new()?;
-    let url = rt.block_on(async {
-        upload_object(
-            &state.s3_client,
-            &output_path,
-            &state.settings.s3_bucket,
-            &key,
-        )
-        .await
-        .context("Failed to upload object")
-        .unwrap();
-        const URL_EXPIRES_IN: Duration = Duration::from_secs(3600);
-        let url = state
-            .s3_client
-            .get_object()
-            .bucket(&state.settings.s3_bucket)
-            .key(&key)
-            .presigned(PresigningConfig::expires_in(URL_EXPIRES_IN).unwrap())
+    let url = if state.settings.dry_run {
+        info!("Dry run, skipping S3 upload");
+        None
+    } else {
+        let start = Instant::now();
+        let key = format!("{}/{}.tsv.zst", state.settings.s3_result_path, request.id);
+        let rt = tokio::runtime::Runtime::new()?;
+        let url = rt.block_on(async {
+            upload_object(
+                &state.s3_client,
+                &output_path,
+                &state.settings.s3_bucket,
+                &key,
+            )
             .await
-            .context("Failed to get presigned URL")
-            .unwrap()
-            .uri()
-            .to_string();
-        url
-    });
-    let duration = start.elapsed();
-    info!("Uploading took {:?}", duration);
+            .context("Failed to upload object")
+            .unwrap();
+            const URL_EXPIRES_IN: Duration = Duration::from_secs(3600);
+            let url = state
+                .s3_client
+                .get_object()
+                .bucket(&state.settings.s3_bucket)
+                .key(&key)
+                .presigned(PresigningConfig::expires_in(URL_EXPIRES_IN).unwrap())
+                .await
+                .context("Failed to get presigned URL")
+                .unwrap()
+                .uri()
+                .to_string();
+            url
+        });
+        let duration = start.elapsed();
+        info!("Uploading took {:?}", duration);
+        Some(url)
+    };
 
     info!("Overall took {:?}", total_duration);
     let result = WebGWASResult {
         request_id: request.id,
         status: WebGWASResultStatus::Done,
         error_msg: None,
-        url: Some(url),
+        url,
         local_result_file: Some(output_path.to_path_buf()),
     };
     state.results.lock().unwrap().insert(result);
