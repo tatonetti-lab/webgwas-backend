@@ -23,7 +23,7 @@ pub fn worker_loop(state: Arc<AppState>) {
             queue.pop()
         };
         if let Some(request) = task {
-            info!("Got a request!!");
+            info!("Got a request");
             let result = handle_webgwas_request(state.clone(), request);
             if let Err(err) = result {
                 info!("Failed to handle request: {}", err);
