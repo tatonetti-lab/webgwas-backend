@@ -35,15 +35,6 @@ pub fn worker_loop(state: Arc<AppState>) {
 }
 
 pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -> Result<()> {
-    // Inform the results that the request is queued
-    let result = WebGWASResult {
-        request_id: request.id,
-        status: WebGWASResultStatus::Queued,
-        error_msg: None,
-        url: None,
-        local_result_file: None,
-    };
-    state.results.lock().unwrap().insert(result);
     // 1. Apply the phenotype and compute the projection coefficents
     let cohort_info = {
         let binding = state.cohort_id_to_data.lock().unwrap();

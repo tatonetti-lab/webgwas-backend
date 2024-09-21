@@ -238,6 +238,15 @@ async fn post_igwas(
         &state.knowledge_base,
     ) {
         Ok(definition) => {
+            let result = WebGWASResult {
+                request_id: unique_id,
+                status: WebGWASResultStatus::Queued,
+                error_msg: None,
+                url: None,
+                local_result_file: None,
+            };
+            state.results.lock().unwrap().insert(result);
+
             // Build the processed request
             let request = WebGWASRequestId {
                 id: unique_id,
