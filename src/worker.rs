@@ -84,14 +84,12 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
     let duration = start.elapsed();
     info!("GWAS took {:?}", duration);
     let total_duration = request.request_time.elapsed();
-    let result = WebGWASResult {
-        request_id: request.id,
-        status: WebGWASResultStatus::Uploading,
-        error_msg: None,
-        url: None,
-        local_result_file: Some(output_path.clone()),
-    };
-    state.results.lock().unwrap().insert(result);
+    {
+        let mut results = state.results.lock().unwrap();
+        let result = results.get_mut(&request.id).unwrap();
+        result.status = WebGWASResultStatus::Uploading;
+        result.local_result_file = Some(output_path.clone());
+    }
 
     let url = if state.settings.dry_run {
         info!("Dry run, skipping S3 upload");
@@ -130,14 +128,12 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
     };
 
     info!("Overall took {:?}", total_duration);
-    let result = WebGWASResult {
-        request_id: request.id,
-        status: WebGWASResultStatus::Done,
-        error_msg: None,
-        url,
-        local_result_file: Some(output_path.to_path_buf()),
-    };
-    state.results.lock().unwrap().insert(result);
+    {
+        let mut results = state.results.lock().unwrap();
+        let result = results.get_mut(&request.id).unwrap();
+        result.status = WebGWASResultStatus::Done;
+        result.url = url;
+    }
     Ok(())
 }
 

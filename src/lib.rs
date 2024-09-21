@@ -155,4 +155,8 @@ impl ResultsCache {
     pub fn get(&mut self, id: &Uuid) -> Option<&WebGWASResult> {
         self.id_to_result.get(id)
     }
+
+    pub fn get_mut(&mut self, id: &Uuid) -> Option<&mut WebGWASResult> {
+        self.id_to_result.get_mut(id)
+    }
 }
