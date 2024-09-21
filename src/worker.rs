@@ -12,7 +12,7 @@ use crate::igwas::{run_igwas_df_impl, Projection};
 use crate::regression::regress_left_inverse_vec;
 use crate::AppState;
 use crate::{
-    models::{WebGWASRequestId, WebGWASResult, WebGWASResultStatus},
+    models::{WebGWASRequestId, WebGWASResultStatus},
     phenotype_definitions::apply_phenotype_definition,
 };
 
