@@ -926,6 +926,7 @@ pub fn read_phenotypes_covariates(
     let covar_cols = covar_df
         .collect_schema()?
         .iter_names_cloned()
+        .filter(|x| x != &covar_file_spec.covar_person_id_column)
         .map(col)
         .collect::<Vec<Expr>>();
     info!("Merging phenotype and covariate files");
