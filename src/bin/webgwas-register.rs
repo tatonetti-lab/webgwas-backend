@@ -3,7 +3,7 @@ use clap::Parser;
 use faer::Mat;
 use faer_ext::polars::polars_to_faer_f32;
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
-use itertools::izip;
+use itertools::{izip, Itertools};
 use log::{error, info, warn};
 use mdav::mdav::mdav;
 use polars::lazy::dsl::{mean_horizontal, min_horizontal};
@@ -513,6 +513,7 @@ impl LocalAppState {
             .final_features
             .iter()
             .cloned()
+            .sorted()
             .collect::<Vec<String>>();
         let start = Instant::now();
         let data = read_phenotypes_covariates(&pheno_cols, pheno_file_spec, covar_file_spec, true)?;
