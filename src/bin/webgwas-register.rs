@@ -917,6 +917,11 @@ pub fn read_phenotypes_covariates(
         .with_separator(covar_file_spec.covar_separator)
         .finish()
         .context("Failed to read covariate file")?;
+    let covar_ignore_cols = covar_file_spec
+        .covar_ignore_columns
+        .clone()
+        .unwrap_or_default();
+    covar_df = covar_df.drop(covar_ignore_cols);
     let covar_cols = covar_df
         .collect_schema()?
         .iter_names_cloned()
