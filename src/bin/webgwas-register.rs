@@ -582,7 +582,7 @@ impl LocalAppState {
             .take(n_samples)
             .map(|x| x.iter().copied().collect::<Vec<f32>>())
             .collect::<Vec<Vec<f32>>>();
-        let anonymized_phenotypes = mdav(raw_phenotypes, pheno_options.k_anonymity);
+        let anonymized_phenotypes = mdav(raw_phenotypes, pheno_options.k_anonymity)?;
         let duration = start.elapsed();
         info!("Anonymizing phenotypes took {:?}", duration);
         let start = Instant::now();
