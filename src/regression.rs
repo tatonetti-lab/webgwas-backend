@@ -5,7 +5,7 @@ pub fn add_intercept(x: &mut Mat<f32>) {
     x.resize_with(x.nrows(), x.ncols() + 1, |_, _| 1.0);
 }
 
-pub fn count_nans(x: &Mat<f64>) -> usize {
+pub fn count_nans(x: &Mat<f32>) -> usize {
     let mut n_nans = 0;
     for i in 0..x.nrows() {
         for j in 0..x.ncols() {
@@ -18,27 +18,11 @@ pub fn count_nans(x: &Mat<f64>) -> usize {
 }
 
 pub fn compute_left_inverse(x: &Mat<f32>) -> Result<Mat<f32>> {
-    let mut x64 = Mat::<f64>::zeros(x.nrows(), x.ncols());
-    for i in 0..x.nrows() {
-        for j in 0..x.ncols() {
-            x64[(i, j)] = x[(i, j)] as f64;
-        }
-    }
-    let svd = x64.thin_svd();
-    let mut s = svd.s_diagonal().to_owned();
-    s.iter_mut().for_each(|x| *x = x.recip());
-    let s_inv_mat = s.column_vector_as_diagonal();
-    let result = svd.v() * s_inv_mat * svd.u().transpose();
+    let result = x.thin_svd().pseudoinverse();
     if count_nans(&result) > 0 {
         bail!("Failed to compute left inverse");
     }
-    let mut result32 = Mat::<f32>::zeros(result.nrows(), result.ncols());
-    for i in 0..result.nrows() {
-        for j in 0..result.ncols() {
-            result32[(i, j)] = result[(i, j)] as f32;
-        }
-    }
-    Ok(result32)
+    Ok(result)
 }
 
 pub fn regress_left_inverse_vec(endog: &Col<f32>, exog_left_inverse: &Mat<f32>) -> Col<f32> {
