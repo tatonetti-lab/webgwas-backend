@@ -12,11 +12,11 @@ crate-type = ["lib"]
 opt-level = 3
 
 [dependencies]
-anyhow = "1.0.87"
+anyhow = "1.0.89"
 aws-config = { version = "1.5.6", features = ["behavior-version-latest"] }
-aws-sdk-s3 = "1.49.0"
-axum = { version = "0.7.5", features = ["macros", "query"] }
-axum-macros = "0.4.1"
+aws-sdk-s3 = "1.51.0"
+axum = { version = "0.7.6", features = ["macros", "query"] }
+axum-macros = "0.4.2"
 env_logger = "0.11.5"
 hashlru = "0.11.1"
 itertools = "0.13.0"
@@ -28,13 +28,13 @@ tokio = { version = "1.40.0", features = ["macros", "rt-multi-thread"] }
 toml = "0.8.19"
 uuid = { version = "1.10.0", features = ["serde", "v4"] }
 tower-http = { version = "0.5.2", features = ["cors"] }
-clap = { version = "4.5.17", features = ["color", "derive", "help"] }
+clap = { version = "4.5.18", features = ["color", "derive", "help"] }
 rusqlite = "0.32.1"
 polars = { git = "https://github.com/pola-rs/polars", version = "0.43.1", features = ["decompress", "is_in", "lazy", "parquet", "performant", "regex", "rows", "zip_with"] }
 zstd = "0.13.2"
 statrs = "0.17.1"
 arrow = "53.0.0"
-faer = "0.19.3"
+faer = "0.19.4"
 faer-ext = { path = "../../Documents/git/faer-ext/", version = "0.2.0", features = ["polars"] }
-mdav = { git = "https://github.com/zietzm/mdav", version = "0.3.0" }
+mdav = { git = "https://github.com/zietzm/mdav", version = "0.4.0" }
 indicatif = "0.17.8"
