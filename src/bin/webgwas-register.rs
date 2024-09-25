@@ -3,7 +3,7 @@ use clap::Parser;
 use faer::Mat;
 use faer_ext::polars::polars_to_faer_f32;
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
-use itertools::{izip, Itertools};
+use itertools::izip;
 use log::{error, info, warn};
 use mdav::mdav::mdav;
 use polars::lazy::dsl::{mean_horizontal, min_horizontal};
@@ -513,7 +513,6 @@ impl LocalAppState {
             .final_features
             .iter()
             .cloned()
-            .sorted()
             .collect::<Vec<String>>();
         let start = Instant::now();
         let data = read_phenotypes_covariates(&pheno_cols, pheno_file_spec, covar_file_spec, true)?;
@@ -927,27 +926,40 @@ pub fn read_phenotypes_covariates(
         .collect_schema()?
         .iter_names_cloned()
         .filter(|x| x != &covar_file_spec.covar_person_id_column)
-        .map(col)
-        .collect::<Vec<Expr>>();
+        .collect::<Vec<PlSmallStr>>();
     info!("Merging phenotype and covariate files");
     let merged_df = pheno_df.inner_join(
         covar_df,
         col(&pheno_file_spec.pheno_person_id_column),
         col(&covar_file_spec.covar_person_id_column),
     );
-    let y_df = merged_df.clone().select(
-        select_cols
+    let y_df = merged_df.clone().collect()?.select(pheno_cols)?;
+    assert_eq!(
+        y_df.get_column_names()
             .iter()
-            .take(pheno_cols.len())
-            .cloned()
-            .collect::<Vec<Expr>>(),
+            .map(|x| x.to_string())
+            .collect::<Vec<String>>(),
+        pheno_cols,
+        "Phenotype columns are not in the correct order"
     );
-    let y = polars_to_faer_f32(y_df).context("Failed to convert phenotypes to faer")?;
-    let mut x_lazy = merged_df.select(covar_cols);
+    let y = polars_to_faer_f32(y_df.lazy()).context("Failed to convert phenotypes to faer")?;
+    let mut x = merged_df.collect()?.select(covar_cols.clone())?;
+    assert_eq!(
+        x.get_column_names()
+            .iter()
+            .map(|x| x.to_string().into())
+            .collect::<Vec<PlSmallStr>>(),
+        covar_cols,
+        "Covariate columns are not in the correct order"
+    );
     if add_intercept {
-        x_lazy = x_lazy.with_column(lit(1.0).alias("intercept"));
+        x.with_column(Column::new_scalar(
+            "intercept".into(),
+            Scalar::new(DataType::Float32, AnyValue::Float32(1.0)),
+            x.height(),
+        ))?;
     }
-    let x = polars_to_faer_f32(x_lazy)?;
+    let x = polars_to_faer_f32(x.lazy())?;
     info!(
         "Read phenotypes (shape {:?}) and covariates (shape {:?})",
         y.shape(),
@@ -1021,13 +1033,6 @@ pub fn estimate_genotype_variance(
     phenotype_variance / (degrees_of_freedom * std_error.pow(2) + beta.pow(2))
 }
 
-pub fn count_unique(x: Vec<f32>) -> usize {
-    let mut copy = x.clone();
-    copy.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    copy.dedup();
-    copy.len()
-}
-
 pub fn compute_sample_size(
     data: &Mat<f32>,
     dtypes: &[NodeType],
@@ -1040,7 +1045,7 @@ pub fn compute_sample_size(
     for (col, dtype) in data.col_iter().zip(dtypes.iter()) {
         let values = col.iter().copied();
         if dtype == &NodeType::Bool && plink_offset {
-            let sum = values.map(|x| x - 2.0).sum();
+            let sum = values.map(|x| x - 2.0).sum::<f32>();
             sample_size.push(sum);
         } else if dtype == &NodeType::Bool {
             let sum = values.sum();
@@ -1077,4 +1082,36 @@ pub struct FeatureInsertRow {
     pub name: String,
     pub type_: String,
     pub sample_size: f32,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use faer::mat;
+
+    #[test]
+    fn test_compute_sample_size() {
+        let data = mat![
+            [1.0, 1.0, 1.0],
+            [3.0, 0.0, 0.0],
+            [5.0, 0.0, 0.0],
+            [7.0, 0.0, 0.0]
+        ];
+        let dtypes = vec![NodeType::Real, NodeType::Real, NodeType::Bool];
+        let sample_size = compute_sample_size(&data, &dtypes, false).unwrap();
+        assert_eq!(sample_size, vec![4.0, 4.0, 1.0]);
+    }
+
+    #[test]
+    fn test_compute_sample_size_offset() {
+        let data = mat![
+            [1.0, 2.0, 3.0],
+            [3.0, 3.0, 2.0],
+            [5.0, 3.0, 2.0],
+            [7.0, 3.0, 2.0]
+        ];
+        let dtypes = vec![NodeType::Real, NodeType::Real, NodeType::Bool];
+        let sample_size = compute_sample_size(&data, &dtypes, true).unwrap();
+        assert_eq!(sample_size, vec![4.0, 4.0, 1.0]);
+    }
 }
