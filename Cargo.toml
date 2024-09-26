@@ -35,6 +35,6 @@ zstd = "0.13.2"
 statrs = "0.17.1"
 arrow = "53.0.0"
 faer = "0.19.4"
-faer-ext = { path = "../../Documents/git/faer-ext/", version = "0.2.0", features = ["polars"] }
+faer-ext = { path = "/Users/zietzm/Documents/git/faer-ext/", version = "0.2.0", features = ["polars"] }
 mdav = { git = "https://github.com/zietzm/mdav", version = "0.4.0" }
 indicatif = "0.17.8"
