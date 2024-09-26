@@ -4,3 +4,6 @@ backend.db
 prod_data
 backup_prod_data
 compile.sh
+processed_pheno_jan2024.tsv
+register.py
+register.sh
