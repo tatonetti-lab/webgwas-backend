@@ -123,6 +123,8 @@ pub struct SingleVariantRunningStats {
 
 pub struct RunningStats {
     pub variant_id: Vec<String>,
+    pub a1: Vec<String>,
+    pub a2: Vec<String>,
     pub beta: Vec<f32>,
     pub genotype_variance: Vec<f32>,
     pub degrees_of_freedom: Vec<i32>,
@@ -142,6 +144,8 @@ pub struct SingleVariantResultStats {
 #[derive(Clone, Debug)]
 pub struct ResultStats {
     pub variant_id: Vec<String>,
+    pub a1: Vec<String>,
+    pub a2: Vec<String>,
     pub beta: Vec<f32>,
     pub std_error: Vec<f32>,
     pub t_stat: Vec<f32>,
@@ -189,6 +193,22 @@ pub fn compute_batch_stats(df: &DataFrame, projection: &mut Projection) -> Resul
         .iter()
         .map(|x| x.expect("Failed to get variant_id").to_string())
         .collect::<Vec<String>>();
+    let a1 = df
+        .column("a1")
+        .context("No a1 column")?
+        .str()
+        .context("a1 column is not str")?
+        .iter()
+        .map(|x| x.expect("Failed to get a1").to_string())
+        .collect::<Vec<String>>();
+    let a2 = df
+        .column("a2")
+        .context("No a2 column")?
+        .str()
+        .context("a2 column is not str")?
+        .iter()
+        .map(|x| x.expect("Failed to get a2").to_string())
+        .collect::<Vec<String>>();
     let genotype_variance = df
         .column("genotype_partial_variance")
         .context("No genotype_variance column")?
@@ -207,6 +227,8 @@ pub fn compute_batch_stats(df: &DataFrame, projection: &mut Projection) -> Resul
         .expect("Failed to collect degrees_of_freedom");
     Ok(RunningStats {
         variant_id,
+        a1,
+        a2,
         beta: gwas_beta,
         genotype_variance,
         degrees_of_freedom,
@@ -266,6 +288,8 @@ pub fn compute_batch_results(
 
     Ok(ResultStats {
         variant_id: running_stats.variant_id,
+        a1: running_stats.a1,
+        a2: running_stats.a2,
         beta: running_stats.beta,
         std_error,
         t_stat,
@@ -278,6 +302,8 @@ pub fn compute_batch_results(
 pub fn results_to_dataframe(result_stats: ResultStats) -> Result<DataFrame> {
     let df = DataFrame::new(vec![
         Column::new("variant_id".into(), result_stats.variant_id),
+        Column::new("a1".into(), result_stats.a1),
+        Column::new("a2".into(), result_stats.a2),
         Column::new("beta".into(), result_stats.beta),
         Column::new("std_error".into(), result_stats.std_error),
         Column::new("t_stat".into(), result_stats.t_stat),
