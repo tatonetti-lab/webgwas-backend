@@ -163,7 +163,13 @@ pub struct FeatureStats {
 
 pub fn compute_batch_stats(df: &DataFrame, projection: &mut Projection) -> Result<RunningStats> {
     let (gwas_beta_mat, feature_ids) = {
-        let gwas_beta_df = df.drop_many(["variant_id", "genotype_variance", "degrees_of_freedom"]);
+        let gwas_beta_df = df.drop_many([
+            "variant_id",
+            "a1",
+            "a2",
+            "genotype_variance",
+            "degrees_of_freedom",
+        ]);
         let feature_ids = gwas_beta_df
             .get_column_names()
             .iter()
