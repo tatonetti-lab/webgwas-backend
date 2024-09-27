@@ -202,7 +202,7 @@ async fn get_phenotype_summary(
         .iter()
         .map(|x| (x - mean).powi(2))
         .sum::<f32>();
-    let r2 = 1.0 - (rss / tss);
+    let r2 = 1.0 - (rss / tss); // This will be NaN if tss is zero
     let duration = start.elapsed();
     info!("Fit quality took {:?}", duration);
     let fit_quality_reference = state
