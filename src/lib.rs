@@ -43,19 +43,17 @@ impl AppState {
         info!("Initializing database");
         let home = std::env::var("HOME").expect("Failed to read $HOME");
         let root = Path::new(&home).join("webgwas");
-        match std::fs::create_dir_all(root.join("results")) {
-            Ok(_) => {}
-            Err(err) => {
-                if err.kind() == std::io::ErrorKind::AlreadyExists {
-                    info!("Results directory already exists, clearing");
-                    std::fs::remove_dir_all(root.join("results"))?;
-                    std::fs::create_dir_all(root.join("results"))?;
-                    info!("Results directory cleared");
-                } else {
-                    return Err(anyhow!("Failed to create results directory: {}", err));
+        if std::fs::exists(root.join("results"))? {
+            info!("Results directory already exists, clearing");
+            match std::fs::remove_dir_all(root.join("results")) {
+                Ok(_) => {}
+                Err(err) => {
+                    return Err(anyhow!("Failed to clear results directory: {}", err));
                 }
             }
+            info!("Results directory cleared");
         }
+        std::fs::create_dir_all(root.join("results"))?;
         let db_path = root.join("webgwas.db").display().to_string();
         let db = SqlitePool::connect(&db_path)
             .await
