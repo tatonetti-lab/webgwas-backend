@@ -106,20 +106,20 @@ async fn validate_phenotype(
         &request.phenotype_definition,
         &state.knowledge_base,
     ) {
-        Ok(_) => Json(ValidPhenotypeResponse {
+        Ok(_) => ValidPhenotypeResponse {
             is_valid: true,
             message: "Phenotype definition is valid".to_string(),
             phenotype_definition: request.phenotype_definition,
-        }),
-        Err(err) => Json(ValidPhenotypeResponse {
+        },
+        Err(err) => ValidPhenotypeResponse {
             is_valid: false,
             message: format!("Phenotype definition is invalid: {}", err),
             phenotype_definition: request.phenotype_definition,
-        }),
+        },
     };
     let duration = start.elapsed();
     info!("Validating phenotype definition took {:?}", duration);
-    result
+    Json(result)
 }
 
 async fn get_phenotype_summary(
