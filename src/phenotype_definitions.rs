@@ -311,7 +311,8 @@ pub fn apply_phenotype_definition(definition: &[Node], df: &DataFrame) -> Result
     if stack.len() != 1 {
         bail!("Invalid definition stack: {:?}", stack);
     }
-    Ok(stack[0].clone())
+    let result = stack.pop().unwrap().cast(&DataType::Float32)?;
+    Ok(result)
 }
 
 /// Convert a phenotype definition (reverse polish notation nodes) to a string
