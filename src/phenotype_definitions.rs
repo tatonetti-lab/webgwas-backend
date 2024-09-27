@@ -328,38 +328,39 @@ pub fn apply_phenotype_definition(definition: &[Node], df: &DataFrame) -> Result
 /// Convert a phenotype definition (reverse polish notation nodes) to a string
 /// e.g. ["age", 30, "gt" "sex" "male" "eq" "and"] -> "AND(GT('age', 30), EQ('sex', 'male'))"
 pub fn format_phenotype_definition(nodes: &[Node]) -> String {
-    let mut result = String::new();
-    let mut stack: Vec<Node> = Vec::new();
+    let mut stack: Vec<String> = Vec::new();
     for node in nodes {
         match node {
             Node::Feature(_) => {
-                stack.push(node.clone());
+                let formatted_node = format_node(node);
+                stack.push(formatted_node);
             }
             Node::Constant(_) => {
-                stack.push(node.clone());
+                let formatted_node = format_node(node);
+                stack.push(formatted_node);
             }
             Node::Operator(op) => {
                 let operator_value = op.value();
                 let operator_string = format_node(node);
                 let mut this_string = format!("{}(", operator_string);
                 assert!(operator_value.arity > 0);
+                let mut local_stack = Vec::new();
                 for _ in 0..operator_value.arity {
                     let top = stack.pop().unwrap();
-                    let node_string = format_node(&top);
-                    this_string.push_str(format!("{}, ", node_string).as_str());
+                    local_stack.push(top);
+                }
+                for top in local_stack.iter().rev() {
+                    this_string.push_str(format!("{}, ", top).as_str());
                 }
                 // Remove the last two characters = ", "
                 this_string.pop();
                 this_string.pop();
-                this_string.push_str(") ");
-                result.push_str(this_string.as_str());
+                this_string.push(')');
+                stack.push(this_string);
             }
         };
     }
-    if result.ends_with(' ') {
-        return result.trim_end().to_string();
-    }
-    result
+    stack.pop().expect("Stack is empty")
 }
 
 pub fn format_node(node: &Node) -> String {
@@ -385,11 +386,11 @@ mod tests {
                 sample_size: 0,
                 cohort_id: 0,
             }),
-            Node::Operator(Operators::Gt),
             Node::Constant(Constant {
                 value: 30.0,
                 node_type: NodeType::Real,
             }),
+            Node::Operator(Operators::Gt),
             Node::Feature(Feature {
                 id: 0,
                 code: "sex".to_string(),
@@ -398,7 +399,6 @@ mod tests {
                 sample_size: 0,
                 cohort_id: 0,
             }),
-            Node::Operator(Operators::Eq),
             Node::Feature(Feature {
                 id: 0,
                 code: "male".to_string(),
@@ -407,9 +407,10 @@ mod tests {
                 sample_size: 0,
                 cohort_id: 0,
             }),
+            Node::Operator(Operators::Eq),
             Node::Operator(Operators::And),
         ];
         let result = format_phenotype_definition(&nodes);
-        assert_eq!(result, "AND(GT('age', 30), EQ('sex', 'male'))");
+        assert_eq!(result, "AND(GT('age', `30`), EQ('sex', 'male'))");
     }
 }
