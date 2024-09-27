@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use faer::Mat;
 use faer_ext::polars::polars_to_faer_f32;
 use log::info;
@@ -45,19 +45,6 @@ impl Display for NodeType {
             NodeType::Any => "ANY",
         };
         write!(f, "{}", string)
-    }
-}
-
-impl FromStr for NodeType {
-    type Err = anyhow::Error;
-
-    fn from_str(input: &str) -> Result<Self, Self::Err> {
-        match input {
-            "BOOL" => Ok(NodeType::Bool),
-            "REAL" => Ok(NodeType::Real),
-            "ANY" => Ok(NodeType::Any),
-            _ => Err(anyhow!("Invalid node type: {}", input)),
-        }
     }
 }
 
@@ -224,6 +211,34 @@ pub struct Operator {
 pub struct Constant {
     pub value: f32,
     pub node_type: NodeType,
+}
+
+impl FromStr for Constant {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if !s.starts_with('<') || !s.ends_with('>') {
+            bail!("Invalid constant {}", s);
+        }
+        let s = s.get(1..s.len() - 1).unwrap();
+        if s.matches(':').count() != 1 {
+            bail!("Invalid constant {}", s);
+        }
+        let (node_type_str, value) = s.split_once(':').unwrap();
+        let node_type = serde_json::from_str::<NodeType>(node_type_str)?;
+        let value = match node_type {
+            NodeType::Bool => match value {
+                "T" => 1.0,
+                "F" => 0.0,
+                _ => bail!("Invalid boolean constant {}", s),
+            },
+            NodeType::Real => value.parse::<f32>()?,
+            NodeType::Any => {
+                bail!("Invalid constant {}", s);
+            }
+        };
+        Ok(Self { value, node_type })
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -459,7 +474,7 @@ impl Operators {
 pub enum ParsingNode {
     Feature(String),
     Operator(Operators),
-    Constant(f32),
+    Constant(Constant),
 }
 
 impl From<ParsingNode> for Node {
@@ -474,10 +489,7 @@ impl From<ParsingNode> for Node {
                 cohort_id: 0,
             }),
             ParsingNode::Operator(operator) => Node::Operator(operator),
-            ParsingNode::Constant(value) => Node::Constant(Constant {
-                value,
-                node_type: NodeType::Real,
-            }),
+            ParsingNode::Constant(constant) => Node::Constant(constant),
         }
     }
 }

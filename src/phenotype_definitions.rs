@@ -34,13 +34,7 @@ pub fn parse_string_definition(phenotype_definition: &str) -> Result<Vec<Parsing
                 if !token.ends_with('>') {
                     return Err(anyhow::anyhow!("Invalid constant {}", token));
                 }
-                current_node = ParsingNode::Constant(
-                    token
-                        .get(1..token.len() - 1)
-                        .unwrap()
-                        .parse::<f32>()
-                        .unwrap(),
-                );
+                current_node = ParsingNode::Constant(Constant::from_str(token)?);
                 nodes.push(current_node);
             }
             _ => {
@@ -92,11 +86,8 @@ pub fn validate_nodes(
             ParsingNode::Operator(_) => {
                 result.push((*node).clone().into());
             }
-            ParsingNode::Constant(value) => {
-                let constant = Node::Constant(Constant {
-                    value: *value,
-                    node_type: NodeType::Real,
-                });
+            ParsingNode::Constant(inner) => {
+                let constant = Node::Constant(inner.clone());
                 result.push(constant);
             }
         }
