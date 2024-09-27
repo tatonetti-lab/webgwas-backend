@@ -167,6 +167,14 @@ pub struct GWASOptions {
     #[arg(long = "variant-id-column", default_value = "ID")]
     pub variant_id_column: String,
 
+    /// GWAS A1 column
+    #[arg(long = "a1-column", default_value = "A1")]
+    pub a1_column: String,
+
+    /// GWAS A2 column
+    #[arg(long = "a2-column", default_value = "OMITTED")]
+    pub a2_column: String,
+
     /// GWAS beta column
     #[arg(long = "beta-column", default_value = "BETA")]
     pub beta_column: String,
@@ -634,17 +642,23 @@ impl LocalAppState {
 
     pub fn process_gwas_files(&mut self, gwas_options: GWASOptions) -> Result<()> {
         let variant_id = gwas_options.variant_id_column.clone();
+        let a1 = gwas_options.a1_column.clone();
+        let a2 = gwas_options.a2_column.clone();
         let beta = gwas_options.beta_column.clone();
         let std_err = gwas_options.std_err_column.clone();
         let sample_size = gwas_options.sample_size_column.clone();
         let column_specs = Arc::new([
             variant_id.clone().into(),
+            a1.clone().into(),
+            a2.clone().into(),
             beta.clone().into(),
             std_err.clone().into(),
             sample_size.clone().into(),
         ]);
         let schema_val: Vec<(PlSmallStr, DataType)> = vec![
             (variant_id.clone().into(), DataType::String),
+            (a1.clone().into(), DataType::String),
+            (a2.clone().into(), DataType::String),
             (beta.clone().into(), DataType::Float32),
             (std_err.clone().into(), DataType::Float32),
             (sample_size.clone().into(), DataType::Float32),
@@ -672,6 +686,8 @@ impl LocalAppState {
                 .lazy()
                 .select([
                     col(&variant_id).alias("variant_id"),
+                    col(&a1).alias("a1"),
+                    col(&a2).alias("a2"),
                     col(&beta)
                         .cast(DataType::Float32)
                         .alias(format!("{}_beta", feature_name).as_str()),
@@ -689,7 +705,29 @@ impl LocalAppState {
                     result_df = Some(this_gwas_df);
                 }
                 Some(df) => {
-                    let joined_df = df.inner_join(&this_gwas_df, ["variant_id"], ["variant_id"])?;
+                    let forward_df = df.inner_join(
+                        &this_gwas_df,
+                        ["variant_id", "a1", "a2"],
+                        ["variant_id", "a1", "a2"],
+                    )?;
+                    let joined_df = if forward_df.height() == df.height() {
+                        forward_df
+                    } else {
+                        let mut reverse_df = df.inner_join(
+                            &this_gwas_df,
+                            ["variant_id", "a1", "a2"],
+                            ["variant_id", "a2", "a1"],
+                        )?;
+                        if reverse_df.height() > 0 {
+                            reverse_df = reverse_df
+                                .lazy()
+                                .with_column(
+                                    col(format!("{}_beta", feature_name).as_str()) * lit(-1.0_f32),
+                                )
+                                .collect()?;
+                        }
+                        forward_df.vstack(&reverse_df)?
+                    };
                     result_df = Some(joined_df);
                 }
             }
@@ -727,6 +765,8 @@ impl LocalAppState {
         let mut final_result_df = lazy_result_df
             .select([
                 col("variant_id"),
+                col("a1"),
+                col("a2"),
                 col("degrees_of_freedom"),
                 mean_horizontal([col("^*_gvar$")])?
                     .cast(DataType::Float32)
