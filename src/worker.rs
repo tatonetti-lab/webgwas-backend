@@ -150,6 +150,7 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
         result.status = WebGWASResultStatus::Done;
         result.url = url;
     }
+    info!("Done");
     Ok(())
 }
 
