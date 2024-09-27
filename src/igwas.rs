@@ -44,6 +44,8 @@ impl Projection {
                 n_features += 1;
             }
         }
+        assert_eq!(n_features, new_feature_coefficient.len());
+        assert_eq!(n_features, new_feature_id.len());
         self.n_features = n_features;
         self.feature_id = new_feature_id;
         let mut new_feature_coefficient_col = Col::zeros(n_features);
@@ -57,6 +59,8 @@ impl Projection {
     }
 
     pub fn standardize(&mut self, full_feature_ids: &[String]) {
+        assert_eq!(self.n_features, self.feature_coefficient.nrows());
+        assert_eq!(self.n_features, self.feature_id.len());
         let mut new_feature_coefficient = Vec::new();
         for feature_id in full_feature_ids {
             match self.feature_id.contains(feature_id) {
