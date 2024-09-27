@@ -22,22 +22,10 @@ impl Projection {
                 "feature_id and feature_coefficient must have the same length.",
             ));
         }
-        let feature_coefficient_vec = feature_coefficient
-            .iter()
-            .filter(|&&c| c != 0.0_f32)
-            .copied()
-            .collect::<Vec<f32>>();
-        let n_features = feature_coefficient_vec.len();
-        let mut feature_coefficient_col = Col::zeros(n_features);
-        feature_coefficient_vec
-            .iter()
-            .enumerate()
-            .for_each(|(i, x)| {
-                feature_coefficient_col[i] = *x;
-            });
-        let result = Projection {
+        let n_features = feature_coefficient.nrows();
+        let result = Self {
             feature_id,
-            feature_coefficient: feature_coefficient_col,
+            feature_coefficient,
             n_features,
         };
         Ok(result)
