@@ -22,10 +22,26 @@ impl Projection {
                 "feature_id and feature_coefficient must have the same length.",
             ));
         }
-        let n_features = feature_coefficient.nrows();
+        let mut final_feature_id = Vec::new();
+        let mut final_feature_coefficient = Vec::new();
+        for (feature_id, feature_coefficient) in feature_id.iter().zip(feature_coefficient.iter()) {
+            if feature_coefficient != &0.0 {
+                final_feature_id.push(feature_id.clone());
+                final_feature_coefficient.push(*feature_coefficient);
+            }
+        }
+        assert_eq!(final_feature_coefficient.len(), final_feature_id.len());
+        let n_features = final_feature_coefficient.len();
+        let mut feature_coef_col = Col::zeros(n_features);
+        final_feature_coefficient
+            .iter()
+            .enumerate()
+            .for_each(|(i, x)| {
+                feature_coef_col[i] = *x;
+            });
         let result = Self {
-            feature_id,
-            feature_coefficient,
+            feature_id: final_feature_id,
+            feature_coefficient: feature_coef_col,
             n_features,
         };
         Ok(result)
