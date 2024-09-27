@@ -164,10 +164,8 @@ pub fn validate_phenotype_definition(
     kb: &KnowledgeBase,
 ) -> Result<Vec<Node>> {
     let nodes = parse_string_definition(definition)?;
-    let valid_nodes = validate_nodes(cohort_id, &nodes, kb)?;
-    if let Err(err) = type_check_nodes(&valid_nodes) {
-        bail!("Phenotype definition is invalid: {}", err);
-    }
+    let valid_nodes = validate_nodes(cohort_id, &nodes, kb).context("Error validating nodes")?;
+    type_check_nodes(&valid_nodes).context("Error type checking nodes")?;
     Ok(valid_nodes)
 }
 
