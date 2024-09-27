@@ -10,6 +10,7 @@ use polars::lazy::dsl::{mean_horizontal, min_horizontal};
 use polars::prelude::*;
 use rusqlite::{params, OptionalExtension};
 use std::ops::Sub;
+use std::str::FromStr;
 use std::{
     collections::{HashMap, HashSet},
     fmt::Write,
@@ -1067,7 +1068,7 @@ pub fn feature_info_df_to_vec(feature_info_df: &DataFrame) -> Result<Vec<Feature
         Some(FeatureInfo {
             code: code?.to_string(),
             name: name?.to_string(),
-            type_: Some(serde_json::from_str::<NodeType>(type_?).unwrap()),
+            type_: Some(NodeType::from_str(type_?).unwrap()),
             sample_size: None,
             partial_variance: None,
         })

@@ -37,6 +37,19 @@ pub enum NodeType {
     Any,
 }
 
+impl FromStr for NodeType {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "BOOL" => Ok(NodeType::Bool),
+            "REAL" => Ok(NodeType::Real),
+            "ANY" => Ok(NodeType::Any),
+            _ => Err(anyhow!("Invalid node type {}", s)),
+        }
+    }
+}
+
 impl Display for NodeType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let string = match self {
@@ -225,7 +238,8 @@ impl FromStr for Constant {
             bail!("Invalid constant {}", s);
         }
         let (node_type_str, value) = s.split_once(':').unwrap();
-        let node_type = serde_json::from_str::<NodeType>(node_type_str)?;
+        let node_type = NodeType::from_str(node_type_str)
+            .context(anyhow!("Invalid node type {}", node_type_str))?;
         let value = match node_type {
             NodeType::Bool => match value {
                 "T" => 1.0,
@@ -527,5 +541,41 @@ impl Display for RequestMetadata {
             "Request ID: {}\nPhenotype definition: {}\nCohort name: {}\nCohort size: {}\nWebGWAS version: {}",
             self.request_id, self.phenotype_definition, self.cohort_name, self.cohort_size, self.webgwas_version
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_deserialize_node_type_bool() {
+        let node_type = NodeType::from_str("BOOL").unwrap();
+        assert_eq!(node_type, NodeType::Bool);
+    }
+
+    #[test]
+    fn test_deserialize_node_type_real() {
+        let node_type = NodeType::from_str("REAL").unwrap();
+        assert_eq!(node_type, NodeType::Real);
+    }
+
+    #[test]
+    fn test_constant_from_str() {
+        let constant = Constant::from_str("<REAL:1.0>").unwrap();
+        assert_eq!(constant.value, 1.0);
+        assert_eq!(constant.node_type, NodeType::Real);
+    }
+
+    #[test]
+    fn test_constant_from_str_invalid() {
+        let result = Constant::from_str("<BOOL:1.0>");
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_constant_from_str_invalid2() {
+        let result = Constant::from_str("<1.0:FOO>");
+        assert!(result.is_err());
     }
 }
