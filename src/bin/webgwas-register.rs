@@ -42,6 +42,7 @@ fn main() {
         args.feature_info_file,
         args.gwas_spec,
         args.pheno_spec,
+        args.variant_info_spec,
     );
     match result {
         Ok(_) => {
@@ -90,6 +91,10 @@ struct Cli {
     // Options for processing phenotype files
     #[command(flatten)]
     pheno_spec: PhenoOptions,
+
+    // Options for processing variant info files
+    #[command(flatten)]
+    variant_info_spec: VariantInfoOptions,
 
     // Overwrite existing cohort
     #[arg(long = "overwrite", default_value_t = false)]
@@ -207,6 +212,25 @@ pub struct PhenoOptions {
     plink_offset: bool,
 }
 
+#[derive(Parser, Debug)]
+pub struct VariantInfoOptions {
+    /// Variant info file path (mandatory)
+    #[arg(long = "variant-info-path")]
+    variant_info_path: Option<PathBuf>,
+
+    /// Variant info file separator
+    #[arg(long = "variant-info-separator", default_value_t = b'\t')]
+    variant_info_separator: u8,
+
+    /// Variant info variant ID column
+    #[arg(long = "variant-info-variant-id-column", default_value = "variant_id")]
+    variant_info_variant_id_column: String,
+
+    /// Variant info columns
+    #[arg(long = "variant-info-columns")]
+    variant_info_columns: Option<Vec<String>>,
+}
+
 pub struct LocalAppState {
     pub root_directory: PathBuf,
     pub cohort_directory: PathBuf,
@@ -272,6 +296,7 @@ impl LocalAppState {
         feature_info_file: FeatureInfoFile,
         gwas_options: GWASOptions,
         pheno_options: PhenoOptions,
+        variant_info_options: VariantInfoOptions,
     ) -> Result<()> {
         info!("Registering cohort {}", self.metadata.name);
         match self.check_cohort_does_not_exist() {
@@ -297,7 +322,7 @@ impl LocalAppState {
         )?;
         self.process_feature_info_file(&feature_info_file)?;
         self.process_phenotypes_covariates(&pheno_file_spec, &covar_file_spec, pheno_options)?;
-        self.process_gwas_files(gwas_options)?;
+        self.process_gwas_files(gwas_options, variant_info_options)?;
         info!("Writing feature info rows to the database");
         let start = Instant::now();
         let cohort_row = Cohort {
@@ -640,7 +665,11 @@ impl LocalAppState {
         Ok(())
     }
 
-    pub fn process_gwas_files(&mut self, gwas_options: GWASOptions) -> Result<()> {
+    pub fn process_gwas_files(
+        &mut self,
+        gwas_options: GWASOptions,
+        variant_info_options: VariantInfoOptions,
+    ) -> Result<()> {
         let variant_id = gwas_options.variant_id_column.clone();
         let a1 = gwas_options.a1_column.clone();
         let a2 = gwas_options.a2_column.clone();
@@ -778,6 +807,35 @@ impl LocalAppState {
                     .map(|x| Ok(x.replace("_beta", "").into())),
             ])
             .collect()?;
+        if variant_info_options.variant_info_columns.is_some() {
+            info!("Adding variant info columns");
+            let variant_info_df = self.process_variant_info_file(&variant_info_options)?;
+            let mut column_order: Vec<String> =
+                vec!["variant_id".to_string(), "a1".to_string(), "a2".to_string()];
+            // Variant info columns are stored between a2 and degrees_of_freedom
+            column_order.extend(variant_info_options.variant_info_columns.clone().unwrap());
+            column_order.extend([
+                "degrees_of_freedom".to_string(),
+                "genotype_partial_variance".to_string(),
+            ]);
+            // GWAS columns follow genotype_partial_variance
+            column_order.extend(
+                final_result_df
+                    .get_column_names()
+                    .iter()
+                    .skip(5)
+                    .map(|x| x.to_string())
+                    .collect::<Vec<String>>(),
+            );
+            final_result_df = final_result_df
+                .join(
+                    &variant_info_df,
+                    ["variant_id"],
+                    ["variant_id"],
+                    JoinArgs::new(JoinType::Inner),
+                )?
+                .select(column_order)?;
+        }
         let duration = start.elapsed();
         info!("Processing loaded GWAS dataframe took {:?}", duration);
         info!("Writing GWAS dataframe");
@@ -817,6 +875,40 @@ impl LocalAppState {
         let duration = start.elapsed();
         info!("Converting feature info file to rows took {:?}", duration);
         Ok(())
+    }
+
+    pub fn process_variant_info_file(
+        &mut self,
+        variant_info_file_spec: &VariantInfoOptions,
+    ) -> Result<DataFrame> {
+        info!("Reading variant info file");
+        let start = Instant::now();
+        let mut cols = vec![variant_info_file_spec
+            .variant_info_variant_id_column
+            .clone()];
+        cols.extend(
+            variant_info_file_spec
+                .variant_info_columns
+                .clone()
+                .unwrap_or_default(),
+        );
+        let mut variant_info_df = CsvReadOptions::default()
+            .with_parse_options(
+                CsvParseOptions::default()
+                    .with_separator(variant_info_file_spec.variant_info_separator),
+            )
+            .try_into_reader_with_file_path(variant_info_file_spec.variant_info_path.clone())?
+            .finish()
+            .context("Failed to read variant info file")?
+            .select(cols)?;
+        let duration = start.elapsed();
+        info!("Reading variant info file took {:?}", duration);
+        variant_info_df.rename(
+            &variant_info_file_spec.variant_info_variant_id_column,
+            "variant_id".into(),
+        )?;
+        info!("Variant info {:?}", variant_info_df.head(None));
+        Ok(variant_info_df)
     }
 
     pub fn cleanup(&mut self) -> Result<()> {
