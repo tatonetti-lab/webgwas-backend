@@ -47,7 +47,10 @@ impl AppState {
             Ok(_) => {}
             Err(err) => {
                 if err.kind() == std::io::ErrorKind::AlreadyExists {
-                    info!("Results directory already exists");
+                    info!("Results directory already exists, clearing");
+                    std::fs::remove_dir_all(root.join("results"))?;
+                    std::fs::create_dir_all(root.join("results"))?;
+                    info!("Results directory cleared");
                 } else {
                     return Err(anyhow!("Failed to create results directory: {}", err));
                 }
