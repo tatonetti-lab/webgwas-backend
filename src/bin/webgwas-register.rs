@@ -907,7 +907,6 @@ impl LocalAppState {
             &variant_info_file_spec.variant_info_variant_id_column,
             "variant_id".into(),
         )?;
-        info!("Variant info {:?}", variant_info_df.head(None));
         Ok(variant_info_df)
     }
 
