@@ -324,3 +324,92 @@ pub fn apply_phenotype_definition(definition: &[Node], df: &DataFrame) -> Result
     }
     Ok(stack[0].clone())
 }
+
+/// Convert a phenotype definition (reverse polish notation nodes) to a string
+/// e.g. ["age", 30, "gt" "sex" "male" "eq" "and"] -> "AND(GT('age', 30), EQ('sex', 'male'))"
+pub fn format_phenotype_definition(nodes: &[Node]) -> String {
+    let mut result = String::new();
+    let mut stack: Vec<Node> = Vec::new();
+    for node in nodes {
+        match node {
+            Node::Feature(_) => {
+                stack.push(node.clone());
+            }
+            Node::Constant(_) => {
+                stack.push(node.clone());
+            }
+            Node::Operator(op) => {
+                let operator_value = op.value();
+                let operator_string = format_node(node);
+                let mut this_string = format!("{}(", operator_string);
+                assert!(operator_value.arity > 0);
+                for _ in 0..operator_value.arity {
+                    let top = stack.pop().unwrap();
+                    let node_string = format_node(&top);
+                    this_string.push_str(format!("{}, ", node_string).as_str());
+                }
+                // Remove the last two characters = ", "
+                this_string.pop();
+                this_string.pop();
+                this_string.push_str(") ");
+                result.push_str(this_string.as_str());
+            }
+        };
+    }
+    if result.ends_with(' ') {
+        return result.trim_end().to_string();
+    }
+    result
+}
+
+pub fn format_node(node: &Node) -> String {
+    match node {
+        Node::Feature(field) => format!("'{}'", field.name),
+        Node::Operator(op) => op.to_string(),
+        Node::Constant(constant) => format!("`{}`", constant.value),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_format_phenotype_definition() {
+        let nodes = vec![
+            Node::Feature(Feature {
+                id: 0,
+                code: "age".to_string(),
+                name: "age".to_string(),
+                node_type: NodeType::Real,
+                sample_size: 0,
+                cohort_id: 0,
+            }),
+            Node::Operator(Operators::Gt),
+            Node::Constant(Constant {
+                value: 30.0,
+                node_type: NodeType::Real,
+            }),
+            Node::Feature(Feature {
+                id: 0,
+                code: "sex".to_string(),
+                name: "sex".to_string(),
+                node_type: NodeType::Bool,
+                sample_size: 0,
+                cohort_id: 0,
+            }),
+            Node::Operator(Operators::Eq),
+            Node::Feature(Feature {
+                id: 0,
+                code: "male".to_string(),
+                name: "male".to_string(),
+                node_type: NodeType::Bool,
+                sample_size: 0,
+                cohort_id: 0,
+            }),
+            Node::Operator(Operators::And),
+        ];
+        let result = format_phenotype_definition(&nodes);
+        assert_eq!(result, "AND(GT('age', 30), EQ('sex', 'male'))");
+    }
+}

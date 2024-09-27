@@ -313,6 +313,27 @@ pub enum Operators {
     Eq,
 }
 
+impl Display for Operators {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let string = match self {
+            Operators::Root => "ROOT",
+            Operators::Add => "ADD",
+            Operators::Sub => "SUB",
+            Operators::Mul => "MUL",
+            Operators::Div => "DIV",
+            Operators::And => "AND",
+            Operators::Or => "OR",
+            Operators::Not => "NOT",
+            Operators::Gt => "GT",
+            Operators::Ge => "GE",
+            Operators::Lt => "LT",
+            Operators::Le => "LE",
+            Operators::Eq => "EQ",
+        };
+        write!(f, "{}", string)
+    }
+}
+
 impl FromStr for Operators {
     type Err = anyhow::Error;
 
@@ -458,5 +479,41 @@ impl From<ParsingNode> for Node {
                 node_type: NodeType::Real,
             }),
         }
+    }
+}
+
+#[derive(Serialize)]
+pub struct RequestMetadata {
+    pub request_id: Uuid,
+    pub phenotype_definition: String,
+    pub cohort_name: String,
+    pub cohort_size: usize,
+    pub webgwas_version: String,
+}
+
+impl RequestMetadata {
+    pub fn new(
+        request_id: Uuid,
+        phenotype_definition: String,
+        cohort_name: String,
+        cohort_size: usize,
+    ) -> Self {
+        Self {
+            request_id,
+            phenotype_definition,
+            cohort_name,
+            cohort_size,
+            webgwas_version: env!("CARGO_PKG_VERSION").to_string(),
+        }
+    }
+}
+
+impl Display for RequestMetadata {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "Request ID: {}\nPhenotype definition: {}\nCohort name: {}\nCohort size: {}\nWebGWAS version: {}",
+            self.request_id, self.phenotype_definition, self.cohort_name, self.cohort_size, self.webgwas_version
+        )
     }
 }

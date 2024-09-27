@@ -2,13 +2,20 @@ use anyhow::{anyhow, Context, Result};
 use aws_sdk_s3::presigning::PresigningConfig;
 use faer::Col;
 use log::info;
+use std::fs::File;
+use std::io::{BufReader, Seek, Write};
 use std::path::Path;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
 use tokio::time::Duration;
 use tokio::time::Instant;
+use zip::write::SimpleFileOptions;
+use zip::CompressionMethod;
 
 use crate::igwas::{run_igwas_df_impl, Projection};
+use crate::models::RequestMetadata;
+use crate::phenotype_definitions::format_phenotype_definition;
 use crate::regression::regress_left_inverse_vec;
 use crate::AppState;
 use crate::{
@@ -91,17 +98,25 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
         result.local_result_file = Some(output_path.clone());
     }
 
+    info!("Writing metadata");
+    let metadata_file = create_metadata_file(&state, &request)?;
+    info!("Wrote metadata");
+    info!("Creating zip file");
+    let output_zip_path = create_output_zip(&output_path, &metadata_file)?;
+    info!("Created zip file");
+    std::fs::remove_file(metadata_file)?;
+
     let url = if state.settings.dry_run {
         info!("Dry run, skipping S3 upload");
         None
     } else {
         let start = Instant::now();
-        let key = format!("{}/{}.tsv.zst", state.settings.s3_result_path, request.id);
+        let key = format!("{}/{}.zip", state.settings.s3_result_path, request.id);
         let rt = tokio::runtime::Runtime::new()?;
         let url = rt.block_on(async {
             upload_object(
                 &state.s3_client,
-                &output_path,
+                &output_zip_path,
                 &state.settings.s3_bucket,
                 &key,
             )
@@ -124,6 +139,7 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
         });
         let duration = start.elapsed();
         info!("Uploading took {:?}", duration);
+        std::fs::remove_file(output_zip_path)?;
         Some(url)
     };
 
@@ -152,4 +168,50 @@ pub async fn upload_object(
         .send()
         .await?;
     Ok(result)
+}
+
+pub fn create_metadata_file(state: &AppState, request: &WebGWASRequestId) -> Result<PathBuf> {
+    let cohort_info = {
+        let binding = state.cohort_id_to_data.lock().unwrap();
+        binding.get(&request.cohort_id).unwrap().clone()
+    };
+    let metadata = RequestMetadata::new(
+        request.id,
+        format_phenotype_definition(&request.phenotype_definition),
+        cohort_info.cohort.name.clone(),
+        cohort_info.features_df.height(),
+    );
+    let output_metadata_path = state
+        .root_directory
+        .join(format!("results/{}.txt", request.id));
+    let mut metadata_file = File::create(output_metadata_path.clone())?;
+    write!(metadata_file, "{}", metadata)?;
+    Ok(output_metadata_path)
+}
+
+pub fn add_file_to_zip<W>(
+    zip_writer: &mut zip::ZipWriter<W>,
+    file_path: &Path,
+    name_in_zip: &str,
+) -> zip::result::ZipResult<()>
+where
+    W: Write + Seek,
+{
+    let options = SimpleFileOptions::default()
+        .compression_method(CompressionMethod::Deflated)
+        .unix_permissions(0o644);
+    let file = File::open(file_path)?;
+    let mut buffered_reader = BufReader::new(file);
+    zip_writer.start_file(name_in_zip, options)?;
+    std::io::copy(&mut buffered_reader, zip_writer)?;
+    Ok(())
+}
+
+pub fn create_output_zip(output_path: &Path, metadata_path: &Path) -> Result<PathBuf> {
+    let output_zip_path = output_path.with_extension("").with_extension("zip");
+    let mut zip_writer = zip::ZipWriter::new(File::create(output_zip_path.clone())?);
+    add_file_to_zip(&mut zip_writer, output_path, "results.tsv.zst")?;
+    add_file_to_zip(&mut zip_writer, metadata_path, "metadata.txt")?;
+    zip_writer.finish()?;
+    Ok(output_zip_path)
 }
