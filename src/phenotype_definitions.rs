@@ -15,7 +15,7 @@ pub fn parse_string_definition(phenotype_definition: &str) -> Result<Vec<Parsing
         match token.chars().next() {
             Some('"') => {
                 if !token.ends_with('"') {
-                    return Err(anyhow::anyhow!("Invalid field name {}", token));
+                    bail!("Invalid field name {}", token);
                 }
                 current_node =
                     ParsingNode::Feature(token.get(1..token.len() - 1).unwrap().to_string());
@@ -23,7 +23,7 @@ pub fn parse_string_definition(phenotype_definition: &str) -> Result<Vec<Parsing
             }
             Some('`') => {
                 if !token.ends_with('`') {
-                    return Err(anyhow::anyhow!("Invalid operator {}", token));
+                    bail!("Invalid operator {}", token);
                 }
                 let operator = Operators::from_str(token.get(1..token.len() - 1).unwrap())
                     .context(anyhow!("Unknown operator {}", token))?;
@@ -32,13 +32,13 @@ pub fn parse_string_definition(phenotype_definition: &str) -> Result<Vec<Parsing
             }
             Some('<') => {
                 if !token.ends_with('>') {
-                    return Err(anyhow::anyhow!("Invalid constant {}", token));
+                    bail!("Invalid constant {}", token);
                 }
                 current_node = ParsingNode::Constant(Constant::from_str(token)?);
                 nodes.push(current_node);
             }
             _ => {
-                return Err(anyhow::anyhow!("Invalid token {}", token));
+                bail!("Invalid token {}", token);
             }
         }
     }
