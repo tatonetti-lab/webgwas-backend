@@ -739,6 +739,8 @@ impl LocalAppState {
         let start = Instant::now();
         let mut lazy_result_df = result_df.lazy().select([
             col("variant_id"),
+            col("a1"),
+            col("a2"),
             min_horizontal([col("^*_ss$")])?
                 .sub(lit(self.metadata.num_covar.unwrap_or(0) + 2))
                 .alias("degrees_of_freedom"),
