@@ -21,6 +21,7 @@ pub mod igwas;
 pub mod models;
 pub mod phenotype_definitions;
 pub mod regression;
+mod utils;
 pub mod worker;
 
 use crate::config::Settings;
