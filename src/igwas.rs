@@ -180,7 +180,6 @@ pub fn compute_batch_stats(df: &DataFrame, projection: &mut Projection) -> Resul
         .map(|x| x.to_string())
         .collect::<Vec<String>>();
     let cols_to_drop = slice_before(&columns, &"genotype_partial_variance".to_string());
-    info!("Dropping columns {:?}", cols_to_drop);
     let gwas_beta_df = df.drop_many(&cols_to_drop);
     let feature_ids = gwas_beta_df
         .get_column_names()
