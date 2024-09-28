@@ -80,10 +80,9 @@ async fn get_cohorts(State(state): State<Arc<AppState>>) -> Json<Vec<CohortRespo
 
 /// Get all features for a given cohort
 async fn get_features(
-    request: Query<GetFeaturesRequest>,
+    Query(request): Query<GetFeaturesRequest>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<FeatureResponse>>, WebGWASError> {
-    let request = request.0;
     info!("Fetching features for cohort {}", request.cohort_id);
     let result = sqlx::query_as::<_, FeatureResponse>(
         "SELECT code, name, type as node_type, sample_size
