@@ -2,7 +2,7 @@ use anyhow::{anyhow, Context, Result};
 use faer::Col;
 use faer_ext::polars::polars_to_faer_f32;
 use itertools::izip;
-use log::{debug, info};
+use log::debug;
 use polars::prelude::*;
 use statrs::distribution::{ContinuousCDF, StudentsT};
 use std::{fs::File, io::BufWriter, path::Path};

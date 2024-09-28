@@ -21,6 +21,7 @@ pub mod igwas;
 pub mod models;
 pub mod phenotype_definitions;
 pub mod regression;
+pub mod render_results;
 mod utils;
 pub mod worker;
 

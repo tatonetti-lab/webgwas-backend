@@ -10,22 +10,25 @@ use itertools::izip;
 use log::info;
 use phenotype_definitions::{apply_phenotype_definition, validate_phenotype_definition};
 use polars::prelude::*;
+use std::thread;
 use std::{iter::repeat, sync::Arc};
-use std::{path::PathBuf, thread};
 use tokio::time::Instant;
 use tower_http::cors::CorsLayer;
 use uuid::Uuid;
 
-use webgwas_backend::models::{
-    ApproximatePhenotypeValues, CohortResponse, FeatureResponse, GetFeaturesRequest,
-    PhenotypeFitQuality, PhenotypeSummary, PvaluesResponse, ValidPhenotypeResponse, WebGWASRequest,
-    WebGWASRequestId, WebGWASResponse, WebGWASResult, WebGWASResultStatus,
-};
 use webgwas_backend::phenotype_definitions;
 use webgwas_backend::regression::regress_left_inverse_vec;
 use webgwas_backend::AppState;
 use webgwas_backend::{config::Settings, models::PhenotypeSummaryRequest};
 use webgwas_backend::{errors::WebGWASError, worker::worker_loop};
+use webgwas_backend::{
+    models::{
+        ApproximatePhenotypeValues, CohortResponse, FeatureResponse, GetFeaturesRequest,
+        PhenotypeFitQuality, PhenotypeSummary, PvaluesResponse, ValidPhenotypeResponse,
+        WebGWASRequest, WebGWASRequestId, WebGWASResponse, WebGWASResult, WebGWASResultStatus,
+    },
+    render_results::load_pvalues,
+};
 
 #[tokio::main]
 async fn main() {
@@ -297,57 +300,35 @@ async fn get_igwas_pvalues(
     match state.results.lock().unwrap().get(&request_id) {
         Some(results) => match &results.local_result_file {
             Some(path) => match load_pvalues(path.to_path_buf()) {
-                Ok((variant_ids, pvalues)) => Json(PvaluesResponse {
+                Ok(result) => Json(PvaluesResponse {
                     request_id,
                     status: WebGWASResultStatus::Done,
                     error_msg: None,
-                    variant_ids: Some(variant_ids),
-                    pvalues: Some(pvalues),
+                    pvalues: Some(result.pvalues),
+                    chromosome_positions: Some(result.chromosome_positions),
                 }),
                 Err(err) => Json(PvaluesResponse {
                     request_id,
                     status: WebGWASResultStatus::Error,
                     error_msg: Some(format!("Failed to load p-values: {}", err)),
-                    variant_ids: None,
                     pvalues: None,
+                    chromosome_positions: None,
                 }),
             },
             None => Json(PvaluesResponse {
                 request_id,
                 status: WebGWASResultStatus::Error,
                 error_msg: Some(format!("No local file found for request {}", request_id)),
-                variant_ids: None,
                 pvalues: None,
+                chromosome_positions: None,
             }),
         },
         None => Json(PvaluesResponse {
             request_id,
             status: WebGWASResultStatus::Error,
             error_msg: Some(format!("No result found for request {}", request_id)),
-            variant_ids: None,
             pvalues: None,
+            chromosome_positions: None,
         }),
     }
-}
-
-fn load_pvalues(path: PathBuf) -> Result<(Vec<String>, Vec<f32>)> {
-    let schema_override = Schema::from_iter(vec![("neg_log_p_value".into(), DataType::Float32)]);
-    let df = CsvReadOptions::default()
-        .with_schema_overwrite(Some(Arc::new(schema_override)))
-        .with_parse_options(CsvParseOptions::default().with_separator(b'\t'))
-        .try_into_reader_with_file_path(Some(path))?
-        .finish()?;
-    let variant_ids = df
-        .column("variant_id")?
-        .str()?
-        .iter()
-        .map(|x| x.unwrap().to_string())
-        .collect::<Vec<String>>();
-    let pvalues = df
-        .column("neg_log_p_value")?
-        .f32()?
-        .iter()
-        .map(|x| x.unwrap().to_owned())
-        .collect::<Vec<f32>>();
-    Ok((variant_ids, pvalues))
 }

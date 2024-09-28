@@ -3,7 +3,7 @@ use faer::Mat;
 use faer_ext::polars::polars_to_faer_f32;
 use log::info;
 use polars::prelude::*;
-use serde::{Deserialize, Serialize, Serializer};
+use serde::{Deserialize, Serialize};
 use sqlx::prelude::FromRow;
 use std::fs::File;
 use std::path::PathBuf;
@@ -150,31 +150,29 @@ pub struct PvaluesResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_msg: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub variant_ids: Option<Vec<String>>,
-    #[serde(
-        skip_serializing_if = "Option::is_none",
-        serialize_with = "serialize_vec_f32_rounded"
-    )]
-    pub pvalues: Option<Vec<f32>>,
+    pub pvalues: Option<Vec<Pvalue>>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub chromosome_positions: Option<Vec<ChromosomePosition>>,
 }
 
-fn serialize_vec_f32_rounded<S>(values: &Option<Vec<f32>>, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: Serializer,
-{
-    // Round each value to three decimal places
-    let rounded_values: Vec<f32> = values
-        .as_ref()
-        .unwrap()
-        .iter()
-        .map(|&v| {
-            // Multiply by 1000, round to the nearest integer, then divide back
-            (v * 1000.0).round() / 1000.0
-        })
-        .collect();
+pub struct PvaluesResult {
+    pub pvalues: Vec<Pvalue>,
+    pub chromosome_positions: Vec<ChromosomePosition>,
+}
 
-    // Serialize the rounded values
-    rounded_values.serialize(serializer)
+#[derive(Serialize)]
+pub struct Pvalue {
+    pub index: i32,
+    #[serde(serialize_with = "round_to_decimals")]
+    pub pvalue: f32,
+    pub chromosome: String,
+    pub label: String,
+}
+
+#[derive(Serialize)]
+pub struct ChromosomePosition {
+    pub chromosome: String,
+    pub midpoint: i32,
 }
 
 pub fn round_to_decimals<S>(value: &f32, serializer: S) -> Result<S::Ok, S::Error>
