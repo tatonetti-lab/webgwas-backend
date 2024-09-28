@@ -1,12 +1,3 @@
-/// Get everything after and including the item
-pub fn slice_after<T: PartialEq + Clone>(vec: &[T], item: &T) -> Vec<T> {
-    if let Some(index) = vec.iter().position(|x| x == item) {
-        vec[index..].to_vec()
-    } else {
-        Vec::new()
-    }
-}
-
 /// Get everything up to and including the item
 pub fn slice_before<T: PartialEq + Clone>(vec: &[T], item: &T) -> Vec<T> {
     if let Some(index) = vec.iter().position(|x| x == item) {
