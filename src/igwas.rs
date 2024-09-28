@@ -2,11 +2,13 @@ use anyhow::{anyhow, Context, Result};
 use faer::Col;
 use faer_ext::polars::polars_to_faer_f32;
 use itertools::izip;
-use log::debug;
+use log::{debug, info};
 use polars::prelude::*;
 use statrs::distribution::{ContinuousCDF, StudentsT};
 use std::{fs::File, io::BufWriter, path::Path};
 use zstd::stream::AutoFinishEncoder;
+
+use crate::utils::{slice_after_excl, slice_before, slice_before_excl};
 
 #[derive(Debug)]
 pub struct Projection {
@@ -133,6 +135,7 @@ pub struct RunningStats {
     pub variant_id: Vec<String>,
     pub a1: Vec<String>,
     pub a2: Vec<String>,
+    pub info: Vec<Column>,
     pub beta: Vec<f32>,
     pub genotype_variance: Vec<f32>,
     pub degrees_of_freedom: Vec<i32>,
@@ -154,6 +157,7 @@ pub struct ResultStats {
     pub variant_id: Vec<String>,
     pub a1: Vec<String>,
     pub a2: Vec<String>,
+    pub info: Vec<Column>,
     pub beta: Vec<f32>,
     pub std_error: Vec<f32>,
     pub t_stat: Vec<f32>,
@@ -170,22 +174,20 @@ pub struct FeatureStats {
 }
 
 pub fn compute_batch_stats(df: &DataFrame, projection: &mut Projection) -> Result<RunningStats> {
-    let (gwas_beta_mat, feature_ids) = {
-        let gwas_beta_df = df.drop_many([
-            "variant_id",
-            "a1",
-            "a2",
-            "genotype_variance",
-            "degrees_of_freedom",
-        ]);
-        let feature_ids = gwas_beta_df
-            .get_column_names()
-            .iter()
-            .map(|x| x.to_string())
-            .collect::<Vec<String>>();
-        let gwas_beta_mat = polars_to_faer_f32(gwas_beta_df.lazy())?;
-        (gwas_beta_mat, feature_ids)
-    };
+    let columns = df
+        .get_column_names()
+        .iter()
+        .map(|x| x.to_string())
+        .collect::<Vec<String>>();
+    let cols_to_drop = slice_before(&columns, &"genotype_partial_variance".to_string());
+    info!("Dropping columns {:?}", cols_to_drop);
+    let gwas_beta_df = df.drop_many(&cols_to_drop);
+    let feature_ids = gwas_beta_df
+        .get_column_names()
+        .iter()
+        .map(|x| x.to_string())
+        .collect::<Vec<String>>();
+    let gwas_beta_mat = polars_to_faer_f32(gwas_beta_df.lazy())?;
     projection.standardize(&feature_ids);
     let mut projection_coefs = Col::zeros(projection.n_features);
     projection
@@ -239,10 +241,14 @@ pub fn compute_batch_stats(df: &DataFrame, projection: &mut Projection) -> Resul
         .iter()
         .collect::<Option<Vec<i32>>>()
         .expect("Failed to collect degrees_of_freedom");
+    let info_cols = slice_after_excl(&cols_to_drop, &"a2".to_string());
+    let info_cols = slice_before_excl(&info_cols, &"genotype_partial_variance".to_string());
+    let info = df.select_columns(info_cols)?;
     Ok(RunningStats {
         variant_id,
         a1,
         a2,
+        info,
         beta: gwas_beta,
         genotype_variance,
         degrees_of_freedom,
@@ -304,6 +310,7 @@ pub fn compute_batch_results(
         variant_id: running_stats.variant_id,
         a1: running_stats.a1,
         a2: running_stats.a2,
+        info: running_stats.info,
         beta: running_stats.beta,
         std_error,
         t_stat,
@@ -314,17 +321,21 @@ pub fn compute_batch_results(
 }
 
 pub fn results_to_dataframe(result_stats: ResultStats) -> Result<DataFrame> {
-    let df = DataFrame::new(vec![
+    let mut cols = vec![
         Column::new("variant_id".into(), result_stats.variant_id),
         Column::new("a1".into(), result_stats.a1),
         Column::new("a2".into(), result_stats.a2),
+    ];
+    cols.extend(result_stats.info);
+    cols.extend([
         Column::new("beta".into(), result_stats.beta),
         Column::new("std_error".into(), result_stats.std_error),
         Column::new("t_stat".into(), result_stats.t_stat),
         Column::new("neg_log_p_value".into(), result_stats.neg_log_p_value),
         Column::new("sample_size".into(), result_stats.sample_size),
         Column::new("allele_frequency".into(), result_stats.allele_frequency),
-    ])?;
+    ]);
+    let df = DataFrame::new(cols)?;
     Ok(df)
 }
 
