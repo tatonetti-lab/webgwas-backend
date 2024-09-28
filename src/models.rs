@@ -162,16 +162,21 @@ pub struct PvaluesResult {
 
 #[derive(Debug, Serialize)]
 pub struct Pvalue {
+    #[serde(rename = "i")]
     pub index: i32,
-    #[serde(serialize_with = "round_to_decimals")]
+    #[serde(rename = "p", serialize_with = "round_to_decimals")]
     pub pvalue: f32,
+    #[serde(rename = "c")]
     pub chromosome: String,
+    #[serde(rename = "l")]
     pub label: String,
 }
 
 #[derive(Serialize)]
 pub struct ChromosomePosition {
+    #[serde(rename = "c")]
     pub chromosome: String,
+    #[serde(rename = "m")]
     pub midpoint: i32,
 }
 
