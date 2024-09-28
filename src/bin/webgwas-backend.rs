@@ -13,7 +13,7 @@ use polars::prelude::*;
 use std::thread;
 use std::{iter::repeat, sync::Arc};
 use tokio::time::Instant;
-use tower_http::cors::CorsLayer;
+use tower_http::{compression::CompressionLayer, cors::CorsLayer};
 use uuid::Uuid;
 
 use webgwas_backend::phenotype_definitions;
@@ -59,6 +59,7 @@ async fn main() {
             get(get_igwas_pvalues),
         )
         .layer(CorsLayer::permissive())
+        .layer(CompressionLayer::new().zstd(true))
         .with_state(state);
 
     info!("Starting server");
