@@ -160,7 +160,7 @@ pub struct PvaluesResult {
     pub chromosome_positions: Vec<ChromosomePosition>,
 }
 
-#[derive(Serialize)]
+#[derive(Debug, Serialize)]
 pub struct Pvalue {
     pub index: i32,
     #[serde(serialize_with = "round_to_decimals")]

@@ -310,7 +310,7 @@ async fn get_igwas_pvalues(
                 Err(err) => Json(PvaluesResponse {
                     request_id,
                     status: WebGWASResultStatus::Error,
-                    error_msg: Some(format!("Failed to load p-values: {}", err)),
+                    error_msg: Some(format!("Failed to load p-values: {:#}", err)),
                     pvalues: None,
                     chromosome_positions: None,
                 }),

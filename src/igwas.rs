@@ -241,7 +241,7 @@ pub fn compute_batch_stats(df: &DataFrame, projection: &mut Projection) -> Resul
         .collect::<Option<Vec<i32>>>()
         .expect("Failed to collect degrees_of_freedom");
     let info_cols = slice_after_excl(&cols_to_drop, &"a2".to_string());
-    let info_cols = slice_before_excl(&info_cols, &"genotype_partial_variance".to_string());
+    let info_cols = slice_before_excl(&info_cols, &"degrees_of_freedom".to_string());
     let info = df.select_columns(info_cols)?;
     Ok(RunningStats {
         variant_id,

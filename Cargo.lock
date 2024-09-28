@@ -5255,7 +5255,7 @@ checksum = "c62a0a307cb4a311d3a07867860911ca130c3494e8c2719593806c08bc5d0484"
 
 [[package]]
 name = "webgwas-backend"
-version = "0.6.0"
+version = "0.6.1"
 dependencies = [
  "anyhow",
  "arrow",
