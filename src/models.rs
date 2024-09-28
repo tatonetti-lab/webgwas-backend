@@ -63,10 +63,13 @@ impl Display for NodeType {
 
 #[derive(Serialize, FromRow, Debug)]
 pub struct FeatureResponse {
+    #[serde(rename = "c")]
     pub code: String,
+    #[serde(rename = "n")]
     pub name: String,
-    #[serde(rename = "type")]
+    #[serde(rename = "t")]
     pub node_type: NodeType,
+    #[serde(rename = "s")]
     pub sample_size: i32,
 }
 
