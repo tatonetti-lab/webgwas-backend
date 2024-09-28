@@ -16,11 +16,11 @@ use tokio::time::Instant;
 use tower_http::{compression::CompressionLayer, cors::CorsLayer};
 use uuid::Uuid;
 
-use webgwas_backend::phenotype_definitions;
 use webgwas_backend::regression::regress_left_inverse_vec;
 use webgwas_backend::AppState;
 use webgwas_backend::{config::Settings, models::PhenotypeSummaryRequest};
 use webgwas_backend::{errors::WebGWASError, worker::worker_loop};
+use webgwas_backend::{models::PvaluesQuery, phenotype_definitions};
 use webgwas_backend::{
     models::{
         ApproximatePhenotypeValues, CohortResponse, FeatureResponse, GetFeaturesRequest,
@@ -296,11 +296,12 @@ async fn get_igwas_results(
 async fn get_igwas_pvalues(
     State(state): State<Arc<AppState>>,
     Path(request_id): Path<Uuid>,
+    Query(query): Query<PvaluesQuery>,
 ) -> Json<PvaluesResponse> {
     info!("Fetching WebGWAS p-values for {}", request_id);
     match state.results.lock().unwrap().get(&request_id) {
         Some(results) => match &results.local_result_file {
-            Some(path) => match load_pvalues(path.to_path_buf()) {
+            Some(path) => match load_pvalues(path.to_path_buf(), query.min_neg_log_p) {
                 Ok(result) => Json(PvaluesResponse {
                     request_id,
                     status: WebGWASResultStatus::Done,

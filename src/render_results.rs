@@ -100,8 +100,14 @@ fn extract_chromosome_positions(pvalues: &[Pvalue]) -> Vec<ChromosomePosition> {
 }
 
 /// Load p-values from a result file
-pub fn load_pvalues(path: PathBuf) -> Result<PvaluesResult> {
+pub fn load_pvalues(path: PathBuf, min_neg_log_p: Option<f32>) -> Result<PvaluesResult> {
     let mut df = read_pvalue_df(path).context("Failed to read p-value df")?;
+    if let Some(min_neg_log_p) = min_neg_log_p {
+        df = df
+            .lazy()
+            .filter(col("neg_log_p_value").gt_eq(min_neg_log_p))
+            .collect()?;
+    }
     let index_col = build_chromosome_index(&df).context("Failed to build chromosome index")?;
     let df = df.with_column(index_col)?.sort(
         ["chromosome_index".to_string(), "position".to_string()],

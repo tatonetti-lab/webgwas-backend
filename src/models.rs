@@ -143,6 +143,12 @@ pub struct WebGWASResult {
     pub local_result_file: Option<PathBuf>,
 }
 
+#[derive(Deserialize)]
+pub struct PvaluesQuery {
+    #[serde(rename = "minp")]
+    pub min_neg_log_p: Option<f32>,
+}
+
 #[derive(Serialize)]
 pub struct PvaluesResponse {
     pub request_id: Uuid,
