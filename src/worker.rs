@@ -1,7 +1,8 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result};
 use aws_sdk_s3::presigning::PresigningConfig;
 use faer::Col;
 use log::info;
+use polars::series::Series;
 use std::fs::File;
 use std::io::{BufReader, Seek, Write};
 use std::path::Path;
@@ -14,7 +15,7 @@ use zip::write::SimpleFileOptions;
 use zip::CompressionMethod;
 
 use crate::igwas::{run_igwas_df_impl, Projection};
-use crate::models::RequestMetadata;
+use crate::models::{CohortData, Node, RequestMetadata};
 use crate::phenotype_definitions::format_phenotype_definition;
 use crate::regression::regress_left_inverse_vec;
 use crate::AppState;
@@ -47,33 +48,17 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
         let binding = state.cohort_id_to_data.lock().unwrap();
         binding.get(&request.cohort_id).unwrap().clone()
     };
-    let phenotype =
-        apply_phenotype_definition(&request.phenotype_definition, &cohort_info.features_df)
-            .context(anyhow!("Failed to apply phenotype definition"))?;
-    let mut phenotype_mat = Col::zeros(phenotype.len());
-    phenotype.f32()?.iter().enumerate().for_each(|(i, x)| {
-        phenotype_mat[i] = x.expect("Failed to get phenotype value");
-    });
-    let start = Instant::now();
-    let mut beta = regress_left_inverse_vec(&phenotype_mat, &cohort_info.left_inverse);
-    // Drop the last element of the beta vector, which is the intercept
-    beta.truncate(beta.nrows() - 1);
-    let duration = start.elapsed();
-    info!("Regression took {:?}", duration);
-    let phenotype_names: Vec<String> = cohort_info
-        .features_df
-        .drop("intercept")?
-        .get_column_names()
-        .iter()
-        .map(|x| x.to_string())
-        .collect();
-    let mut projection = Projection::new(phenotype_names, beta.clone())?;
+    let mut projection = compute_projection(&request.phenotype_definition, &cohort_info)?;
 
     // 2. Compute the projection variance
-    let start = Instant::now();
-    let projection_variance = beta.transpose() * &cohort_info.covariance_matrix * &beta;
-    let duration = start.elapsed();
-    info!("Computing projection variance took {:?}", duration);
+    let projection_variance = {
+        let start = Instant::now();
+        let beta = &projection.feature_coefficient;
+        let projection_variance = beta.transpose() * &cohort_info.covariance_matrix * beta;
+        let duration = start.elapsed();
+        info!("Computing projection variance took {:?}", duration);
+        projection_variance
+    };
 
     // 3. Compute GWAS
     let output_path = state
@@ -152,6 +137,39 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
     }
     info!("Done");
     Ok(())
+}
+
+pub fn compute_projection(
+    phenotype_definition: &[Node],
+    cohort_info: &CohortData,
+) -> Result<Projection> {
+    let phenotype = apply_phenotype_definition(phenotype_definition, &cohort_info.features_df)
+        .context("Failed to apply phenotype definition")?;
+    let phenotype_mat =
+        series_to_col_vector(phenotype).context("Error converting Series to Col")?;
+    let start = Instant::now();
+    let mut beta = regress_left_inverse_vec(&phenotype_mat, &cohort_info.left_inverse);
+    // Drop the last element of the beta vector, which is the intercept
+    beta.truncate(beta.nrows() - 1);
+    let duration = start.elapsed();
+    info!("Regression took {:?}", duration);
+    let phenotype_names: Vec<String> = cohort_info
+        .features_df
+        .drop("intercept")?
+        .get_column_names()
+        .iter()
+        .map(|x| x.to_string())
+        .collect();
+    let projection = Projection::new(phenotype_names, beta)?;
+    Ok(projection)
+}
+
+pub fn series_to_col_vector(series: Series) -> Result<Col<f32>> {
+    let mut result = Col::zeros(series.len());
+    series.f32()?.iter().enumerate().for_each(|(i, x)| {
+        result[i] = x.expect("Failed to get value");
+    });
+    Ok(result)
 }
 
 pub async fn upload_object(
