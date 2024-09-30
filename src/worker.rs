@@ -46,7 +46,13 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
     // 1. Apply the phenotype and compute the projection coefficents
     let cohort_info = {
         let binding = state.cohort_id_to_data.lock().unwrap();
-        binding.get(&request.cohort_id).unwrap().clone()
+        binding
+            .get(&request.cohort_id)
+            .context(format!(
+                "Failed to get cohort info for {}",
+                request.cohort_id
+            ))?
+            .clone()
     };
     let mut projection = compute_projection(&request.phenotype_definition, &cohort_info)?;
 
@@ -78,7 +84,9 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
     let total_duration = request.request_time.elapsed();
     {
         let mut results = state.results.lock().unwrap();
-        let result = results.get_mut(&request.id).unwrap();
+        let result = results
+            .get_mut(&request.id)
+            .context("Failed to get result")?;
         result.status = WebGWASResultStatus::Uploading;
         result.local_result_file = Some(output_path.clone());
     }
@@ -97,31 +105,7 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
     } else {
         let start = Instant::now();
         let key = format!("{}/{}.zip", state.settings.s3_result_path, request.id);
-        let rt = tokio::runtime::Runtime::new()?;
-        let url = rt.block_on(async {
-            upload_object(
-                &state.s3_client,
-                &output_zip_path,
-                &state.settings.s3_bucket,
-                &key,
-            )
-            .await
-            .context("Failed to upload object")
-            .unwrap();
-            const URL_EXPIRES_IN: Duration = Duration::from_secs(3600);
-            let url = state
-                .s3_client
-                .get_object()
-                .bucket(&state.settings.s3_bucket)
-                .key(&key)
-                .presigned(PresigningConfig::expires_in(URL_EXPIRES_IN).unwrap())
-                .await
-                .context("Failed to get presigned URL")
-                .unwrap()
-                .uri()
-                .to_string();
-            url
-        });
+        let url = upload_and_get_url(&state, &output_zip_path, &key)?;
         let duration = start.elapsed();
         info!("Uploading took {:?}", duration);
         std::fs::remove_file(output_zip_path)?;
@@ -131,7 +115,7 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
     info!("Overall took {:?}", total_duration);
     {
         let mut results = state.results.lock().unwrap();
-        let result = results.get_mut(&request.id).unwrap();
+        let result = results.get_mut(&request.id).context("Result not found")?;
         result.status = WebGWASResultStatus::Done;
         result.url = url;
     }
@@ -189,10 +173,49 @@ pub async fn upload_object(
     Ok(result)
 }
 
+pub fn upload_and_get_url(state: &AppState, output_zip_path: &Path, key: &str) -> Result<String> {
+    let rt = tokio::runtime::Runtime::new()?;
+    let url = rt.block_on(async { upload_and_get_url_async(state, output_zip_path, key).await })?;
+    Ok(url)
+}
+
+async fn upload_and_get_url_async(
+    state: &AppState,
+    output_zip_path: &Path,
+    key: &str,
+) -> Result<String> {
+    upload_object(
+        &state.s3_client,
+        output_zip_path,
+        &state.settings.s3_bucket,
+        key,
+    )
+    .await
+    .context("Failed to upload object")?;
+    const URL_EXPIRES_IN: Duration = Duration::from_secs(3600);
+    let url = state
+        .s3_client
+        .get_object()
+        .bucket(&state.settings.s3_bucket)
+        .key(key)
+        .presigned(PresigningConfig::expires_in(URL_EXPIRES_IN)?)
+        .await
+        .context("Failed to get presigned URL")?
+        .uri()
+        .to_string();
+    Ok(url)
+}
+
 pub fn create_metadata_file(state: &AppState, request: &WebGWASRequestId) -> Result<PathBuf> {
     let cohort_info = {
         let binding = state.cohort_id_to_data.lock().unwrap();
-        binding.get(&request.cohort_id).unwrap().clone()
+        binding
+            .get(&request.cohort_id)
+            .context(format!(
+                "Failed to get cohort info for {}",
+                request.cohort_id
+            ))?
+            .clone()
     };
     let metadata = RequestMetadata::new(
         request.id,
