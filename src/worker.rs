@@ -37,7 +37,7 @@ pub fn worker_loop(state: Arc<AppState>) {
                 info!("Failed to handle request: {}", err);
             }
         } else {
-            thread::sleep(Duration::from_millis(100));
+            thread::sleep(Duration::from_millis(10));
         }
     }
 }
