@@ -1,4 +1,4 @@
-use anyhow::{Context, Result};
+use anyhow::{bail, Context, Result};
 use aws_sdk_s3::presigning::PresigningConfig;
 use faer::Col;
 use log::info;
@@ -43,7 +43,7 @@ pub fn worker_loop(state: Arc<AppState>) {
 }
 
 pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -> Result<()> {
-    // 1. Apply the phenotype and compute the projection coefficents
+    // 0. Load the cohort info (relevant data for this request)
     let cohort_info = {
         let binding = state.cohort_id_to_data.lock().unwrap();
         binding
@@ -54,7 +54,21 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
             ))?
             .clone()
     };
-    let mut projection = compute_projection(&request.phenotype_definition, &cohort_info)?;
+
+    // 1. Apply the phenotype and compute the projection coefficents
+    let projection_result = compute_projection(&request.phenotype_definition, &cohort_info);
+    let mut projection = match projection_result {
+        Ok(projection) => projection,
+        Err(err) => {
+            let mut results = state.results.lock().unwrap();
+            let result = results
+                .get_mut(&request.id)
+                .context("Failed to get result")?;
+            result.status = WebGWASResultStatus::Error;
+            result.error_msg = Some(format!("Failed to compute projection: {}", err));
+            return Err(err);
+        }
+    };
 
     // 2. Compute the projection variance
     let projection_variance = {
@@ -127,25 +141,43 @@ pub fn compute_projection(
     phenotype_definition: &[Node],
     cohort_info: &CohortData,
 ) -> Result<Projection> {
-    let phenotype = apply_phenotype_definition(phenotype_definition, &cohort_info.features_df)
-        .context("Failed to apply phenotype definition")?;
-    let phenotype_mat =
-        series_to_col_vector(phenotype).context("Error converting Series to Col")?;
-    let start = Instant::now();
-    let mut beta = regress_left_inverse_vec(&phenotype_mat, &cohort_info.left_inverse);
-    // Drop the last element of the beta vector, which is the intercept
-    beta.truncate(beta.nrows() - 1);
-    let duration = start.elapsed();
-    info!("Regression took {:?}", duration);
-    let phenotype_names: Vec<String> = cohort_info
-        .features_df
-        .drop("intercept")?
-        .get_column_names()
-        .iter()
-        .map(|x| x.to_string())
-        .collect();
-    let projection = Projection::new(phenotype_names, beta)?;
-    Ok(projection)
+    if phenotype_definition.len() == 1 {
+        match &phenotype_definition[0] {
+            Node::Feature(feature) => {
+                let mut beta = Col::zeros(1);
+                beta[0] = 1.0;
+                let phenotype_names = vec![feature.name.clone()];
+                let projection = Projection::new(phenotype_names, beta)?;
+                Ok(projection)
+            }
+            Node::Operator(operator) => {
+                bail!("Operator {} is not supported", operator.value().name);
+            }
+            Node::Constant(constant) => {
+                bail!("Constant {} is not supported", constant.value);
+            }
+        }
+    } else {
+        let phenotype = apply_phenotype_definition(phenotype_definition, &cohort_info.features_df)
+            .context("Failed to apply phenotype definition")?;
+        let phenotype_mat =
+            series_to_col_vector(phenotype).context("Error converting Series to Col")?;
+        let start = Instant::now();
+        let mut beta = regress_left_inverse_vec(&phenotype_mat, &cohort_info.left_inverse);
+        // Drop the last element of the beta vector, which is the intercept
+        beta.truncate(beta.nrows() - 1);
+        let duration = start.elapsed();
+        info!("Regression took {:?}", duration);
+        let phenotype_names: Vec<String> = cohort_info
+            .features_df
+            .drop("intercept")?
+            .get_column_names()
+            .iter()
+            .map(|x| x.to_string())
+            .collect();
+        let projection = Projection::new(phenotype_names, beta)?;
+        Ok(projection)
+    }
 }
 
 pub fn series_to_col_vector(series: Series) -> Result<Col<f32>> {
