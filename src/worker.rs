@@ -2,7 +2,6 @@ use anyhow::{bail, Context, Result};
 use aws_sdk_s3::presigning::PresigningConfig;
 use faer::Col;
 use log::info;
-use polars::series::Series;
 use std::fs::File;
 use std::io::{BufReader, Seek, Write};
 use std::path::Path;
@@ -18,6 +17,7 @@ use crate::igwas::{run_igwas_df_impl, Projection};
 use crate::models::{CohortData, Node, RequestMetadata};
 use crate::phenotype_definitions::format_phenotype_definition;
 use crate::regression::regress_left_inverse_vec;
+use crate::utils::series_to_col_vector;
 use crate::AppState;
 use crate::{
     models::{WebGWASRequestId, WebGWASResultStatus},
@@ -147,7 +147,17 @@ pub fn compute_projection(
                 let mut beta = Col::zeros(1);
                 beta[0] = 1.0;
                 let phenotype_names = vec![feature.name.clone()];
-                let projection = Projection::new(phenotype_names, beta)?;
+                let mut projection = Projection::new(phenotype_names, beta)?;
+                // Standardize to the full feature names
+                let mut feature_names = cohort_info
+                    .features_df
+                    .get_column_names()
+                    .iter()
+                    .map(|x| x.to_string())
+                    .collect::<Vec<String>>();
+                feature_names.truncate(feature_names.len() - 1);
+                info!("Last feature name: {}", feature_names.last().unwrap());
+                projection.standardize(&feature_names);
                 Ok(projection)
             }
             Node::Operator(operator) => {
@@ -178,14 +188,6 @@ pub fn compute_projection(
         let projection = Projection::new(phenotype_names, beta)?;
         Ok(projection)
     }
-}
-
-pub fn series_to_col_vector(series: Series) -> Result<Col<f32>> {
-    let mut result = Col::zeros(series.len());
-    series.f32()?.iter().enumerate().for_each(|(i, x)| {
-        result[i] = x.expect("Failed to get value");
-    });
-    Ok(result)
 }
 
 pub async fn upload_object(
