@@ -59,7 +59,7 @@ impl AppState {
         std::fs::create_dir_all(root.join("results"))?;
         let db_path = root.join("webgwas.db").display().to_string();
         let db = SqlitePoolOptions::new()
-            .max_connections(5)
+            .max_connections(20)
             .connect(&db_path)
             .await
             .context(anyhow!("Failed to connect to database: {}", db_path))?;
