@@ -149,7 +149,6 @@ pub struct SingleVariantResultStats {
     pub t_stat: f32,
     pub neg_log_p_value: f32,
     pub sample_size: i32,
-    pub allele_frequency: f32,
 }
 
 #[derive(Clone, Debug)]
@@ -163,7 +162,6 @@ pub struct ResultStats {
     pub t_stat: Vec<f32>,
     pub neg_log_p_value: Vec<f32>,
     pub sample_size: Vec<i32>,
-    pub allele_frequency: Vec<f32>,
 }
 
 pub struct FeatureStats {
@@ -250,12 +248,6 @@ pub fn compute_batch_stats(df: &DataFrame, projection: &mut Projection) -> Resul
     })
 }
 
-/// Compute the minor allele frequency from the variance of the additively
-/// coded genotype.
-pub fn compute_maf_from_variance(genotype_variance: f32) -> f32 {
-    (1.0 - (1.0 - 2.0 * genotype_variance).sqrt()) / 2.0
-}
-
 pub fn compute_batch_results(
     running_stats: RunningStats,
     projection_variance: f32,
@@ -295,12 +287,6 @@ pub fn compute_batch_results(
         .map(|dof| dof + n_covariates as i32 + 2)
         .collect();
 
-    let allele_frequency = running_stats
-        .genotype_variance
-        .iter()
-        .map(|&gv| compute_maf_from_variance(gv))
-        .collect();
-
     Ok(ResultStats {
         variant_id: running_stats.variant_id,
         a1: running_stats.a1,
@@ -311,7 +297,6 @@ pub fn compute_batch_results(
         t_stat,
         neg_log_p_value,
         sample_size,
-        allele_frequency,
     })
 }
 
@@ -328,7 +313,6 @@ pub fn results_to_dataframe(result_stats: ResultStats) -> Result<DataFrame> {
         Column::new("t_stat".into(), result_stats.t_stat),
         Column::new("neg_log_p_value".into(), result_stats.neg_log_p_value),
         Column::new("sample_size".into(), result_stats.sample_size),
-        Column::new("allele_frequency".into(), result_stats.allele_frequency),
     ]);
     let df = DataFrame::new(cols)?;
     Ok(df)
