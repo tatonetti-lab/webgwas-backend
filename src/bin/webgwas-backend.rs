@@ -7,7 +7,7 @@ use axum::{
 use faer::Col;
 use faer_ext::polars::polars_to_faer_f32;
 use itertools::izip;
-use log::info;
+use log::{error, info};
 use phenotype_definitions::{apply_phenotype_definition, validate_phenotype_definition};
 use polars::prelude::*;
 use std::thread;
@@ -91,10 +91,15 @@ async fn get_features(
     )
     .bind(request.cohort_id)
     .fetch_all(&state.db)
-    .await
-    .context("Failed to fetch features")?;
+    .await;
 
-    Ok(Json(result))
+    match result {
+        Ok(result) => Ok(Json(result)),
+        Err(err) => {
+            error!("Failed to fetch features: {}", err);
+            Err(err.into())
+        }
+    }
 }
 
 /// Validate a phenotype definition
