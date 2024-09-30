@@ -6,6 +6,7 @@ use models::Cohort;
 use phenotype_definitions::KnowledgeBase;
 use polars::io::parquet::read::ParquetReader;
 use polars::prelude::*;
+use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::SqlitePool;
 use std::path::{Path, PathBuf};
 use std::{
@@ -57,9 +58,20 @@ impl AppState {
         }
         std::fs::create_dir_all(root.join("results"))?;
         let db_path = root.join("webgwas.db").display().to_string();
-        let db = SqlitePool::connect(&db_path)
+        let db = SqlitePoolOptions::new()
+            .max_connections(5)
+            .connect(&db_path)
             .await
             .context(anyhow!("Failed to connect to database: {}", db_path))?;
+
+        // Execute some pragma statements to improve performance
+        sqlx::query("PRAGMA journal_mode=WAL;").execute(&db).await?;
+        sqlx::query("PRAGMA synchronous = NORMAL;")
+            .execute(&db)
+            .await?;
+        sqlx::query("PRAGMA temp_store = MEMORY;")
+            .execute(&db)
+            .await?;
 
         info!("Loading cohorts");
         let cohort_id_to_data = sqlx::query_as::<_, Cohort>("SELECT * FROM cohort")
