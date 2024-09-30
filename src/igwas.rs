@@ -188,15 +188,11 @@ pub fn compute_batch_stats(df: &DataFrame, projection: &mut Projection) -> Resul
         .collect::<Vec<String>>();
     let gwas_beta_mat = polars_to_faer_f32(gwas_beta_df.lazy())?;
     projection.standardize(&feature_ids);
-    let mut projection_coefs = Col::zeros(projection.n_features);
-    projection
-        .feature_coefficient
-        .iter()
-        .enumerate()
-        .for_each(|(i, x)| {
-            projection_coefs[i] = *x;
-        });
-    let gwas_beta = (gwas_beta_mat * projection_coefs)
+    assert_eq!(
+        projection.n_features,
+        projection.feature_coefficient.nrows()
+    );
+    let gwas_beta = (gwas_beta_mat * &projection.feature_coefficient)
         .iter()
         .cloned()
         .collect::<Vec<f32>>();
