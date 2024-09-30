@@ -146,7 +146,7 @@ pub fn compute_projection(
             Node::Feature(feature) => {
                 let mut beta = Col::zeros(1);
                 beta[0] = 1.0;
-                let phenotype_names = vec![feature.name.clone()];
+                let phenotype_names = vec![feature.code.clone()];
                 let mut projection = Projection::new(phenotype_names, beta)?;
                 // Standardize to the full feature names
                 let mut feature_names = cohort_info
@@ -156,8 +156,10 @@ pub fn compute_projection(
                     .map(|x| x.to_string())
                     .collect::<Vec<String>>();
                 feature_names.truncate(feature_names.len() - 1);
-                info!("Last feature name: {}", feature_names.last().unwrap());
                 projection.standardize(&feature_names);
+                if !projection.feature_id.contains(&feature.code) {
+                    bail!("Feature {} not found after standardization", feature.code);
+                }
                 Ok(projection)
             }
             Node::Operator(operator) => {
