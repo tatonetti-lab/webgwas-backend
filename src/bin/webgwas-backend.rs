@@ -1,19 +1,22 @@
 use anyhow::{anyhow, Context, Result};
 use axum::{
-    extract::{Path, Query, State},
+    extract::{ConnectInfo, Path, Query, State},
     routing::{get, post, put},
     Json, Router,
 };
 use faer::Col;
 use faer_ext::polars::polars_to_faer_f32;
 use itertools::izip;
-use log::{error, info};
+use log::error;
 use phenotype_definitions::{apply_phenotype_definition, validate_phenotype_definition};
 use polars::prelude::*;
-use std::thread;
 use std::{iter::repeat, sync::Arc};
-use tokio::time::Instant;
-use tower_http::{compression::CompressionLayer, cors::CorsLayer};
+use std::{net::SocketAddr, thread};
+use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLayer};
+use tracing::info_span;
+use tracing_appender::rolling;
+use tracing_subscriber::Layer;
+use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
 use uuid::Uuid;
 
 use webgwas_backend::regression::regress_left_inverse_vec;
@@ -32,21 +35,51 @@ use webgwas_backend::{
 
 #[tokio::main]
 async fn main() {
-    env_logger::init();
-
-    info!("Reading settings");
     let settings = Settings::read_file("settings.toml")
         .context("Failed to read config file")
         .unwrap();
-    info!("Initializing state");
-    let state = Arc::new(AppState::new(settings).await.unwrap());
+
+    // Configure tracing/logging
+    let appender = rolling::daily(&settings.log_path, "webgwas");
+    let subscriber = tracing_subscriber::registry().with(
+        fmt::layer()
+            .json()
+            .flatten_event(true)
+            .with_writer(appender)
+            .with_thread_ids(false)
+            .with_target(false)
+            .with_level(true)
+            .with_timer(fmt::time::ChronoUtc::rfc_3339())
+            .with_span_events(fmt::format::FmtSpan::CLOSE)
+            .with_filter(tracing_subscriber::EnvFilter::from_default_env()),
+    );
+    subscriber.init();
+
+    // Trace layer for the http server
+    let trace_layer = TraceLayer::new_for_http().make_span_with(|request: &http::Request<_>| {
+        let conn_info = request.extensions().get::<ConnectInfo<SocketAddr>>();
+        let ip = conn_info
+            .map(|ci| ci.0.ip().to_string())
+            .unwrap_or_else(|| "unknown".to_string());
+        tracing::info_span!(
+            "API request",
+            method = %request.method(),
+            uri = %request.uri(),
+            version = ?request.version(),
+            client_ip = %ip,
+        )
+    });
+
+    let state = {
+        let _span = tracing::info_span!("Initializing state").entered();
+        Arc::new(AppState::new(settings).await.unwrap())
+    };
 
     let worker_state = state.clone();
     thread::spawn(move || {
         worker_loop(worker_state);
     });
 
-    info!("Initializing app");
     let app = Router::new()
         .route("/api/cohorts", get(get_cohorts))
         .route("/api/features", get(get_features))
@@ -58,18 +91,22 @@ async fn main() {
             "/api/igwas/results/pvalues/:request_id",
             get(get_igwas_pvalues),
         )
+        .layer(trace_layer)
         .layer(CorsLayer::permissive())
         .layer(CompressionLayer::new().zstd(true))
         .with_state(state);
 
-    info!("Starting server");
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();
-    axum::serve(listener, app).await.unwrap();
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .await
+    .unwrap();
 }
 
 /// Get all cohorts
 async fn get_cohorts(State(state): State<Arc<AppState>>) -> Json<Vec<CohortResponse>> {
-    info!("Fetching cohorts");
     let result = sqlx::query_as::<_, CohortResponse>("SELECT id, name FROM cohort")
         .fetch_all(&state.db)
         .await
@@ -83,7 +120,6 @@ async fn get_features(
     Query(request): Query<GetFeaturesRequest>,
     State(state): State<Arc<AppState>>,
 ) -> Result<Json<Vec<FeatureResponse>>, WebGWASError> {
-    info!("Fetching features for cohort {}", request.cohort_id);
     let result = sqlx::query_as::<_, FeatureResponse>(
         "SELECT code, name, type as node_type, sample_size
         FROM feature WHERE cohort_id = $1
@@ -107,8 +143,6 @@ async fn validate_phenotype(
     State(state): State<Arc<AppState>>,
     Json(request): Json<WebGWASRequest>,
 ) -> Json<ValidPhenotypeResponse> {
-    info!("Validating phenotype definition");
-    let start = Instant::now();
     let result = match validate_phenotype_definition(
         request.cohort_id,
         &request.phenotype_definition,
@@ -125,8 +159,6 @@ async fn validate_phenotype(
             phenotype_definition: request.phenotype_definition,
         },
     };
-    let duration = start.elapsed();
-    info!("Validating phenotype definition took {:?}", duration);
     Json(result)
 }
 
@@ -134,7 +166,6 @@ async fn get_phenotype_summary(
     State(state): State<Arc<AppState>>,
     Json(request): Json<PhenotypeSummaryRequest>,
 ) -> Result<Json<PhenotypeSummary>, WebGWASError> {
-    let overall_start = Instant::now();
     // 1. Validate the phenotype definition
     let definition = match validate_phenotype_definition(
         request.cohort_id,
@@ -159,15 +190,15 @@ async fn get_phenotype_summary(
     });
 
     // 3. Regress the phenotype against the features
-    let start = Instant::now();
-    let beta = regress_left_inverse_vec(&phenotype_mat, &cohort_info.left_inverse);
-    let duration = start.elapsed();
-    info!("Regression took {:?}", duration);
+    let beta = {
+        let _span = info_span!("regress_left_inverse_vec").entered();
+        regress_left_inverse_vec(&phenotype_mat, &cohort_info.left_inverse)
+    };
 
-    let start = Instant::now();
-    let phenotype_pred = polars_to_faer_f32(cohort_info.features_df.clone().lazy())? * &beta;
-    let duration = start.elapsed();
-    info!("Prediction took {:?}", duration);
+    let phenotype_pred = {
+        let _span = info_span!("polars_to_faer_f32").entered();
+        polars_to_faer_f32(cohort_info.features_df.clone().lazy())? * &beta
+    };
 
     let phenotype_pred_df = DataFrame::new(vec![
         Column::new(
@@ -200,19 +231,20 @@ async fn get_phenotype_summary(
     .context("Failed to calculate phenotype values")?;
 
     // 4. Calculate the fit quality
-    let start = Instant::now();
-    let rss = (&phenotype_pred - &phenotype_mat)
-        .iter()
-        .map(|x| x.powi(2))
-        .sum::<f32>();
-    let mean = phenotype_mat.sum() / phenotype_mat.nrows() as f32;
-    let tss = phenotype_mat
-        .iter()
-        .map(|x| (x - mean).powi(2))
-        .sum::<f32>();
-    let r2 = 1.0 - (rss / tss); // This will be NaN if tss is zero
-    let duration = start.elapsed();
-    info!("Fit quality took {:?}", duration);
+    let rsquared = {
+        let _span = info_span!("compute_rsquared").entered();
+        let rss = (&phenotype_pred - &phenotype_mat)
+            .iter()
+            .map(|x| x.powi(2))
+            .sum::<f32>();
+        let mean = phenotype_mat.sum() / phenotype_mat.nrows() as f32;
+        let tss = phenotype_mat
+            .iter()
+            .map(|x| (x - mean).powi(2))
+            .sum::<f32>();
+
+        1.0 - (rss / tss) // This will be NaN if tss is zero
+    };
     let fit_quality_reference = state
         .fit_quality_reference
         .iter()
@@ -220,15 +252,12 @@ async fn get_phenotype_summary(
         .cloned()
         .collect::<Vec<PhenotypeFitQuality>>();
 
-    let total_duration = overall_start.elapsed();
-    info!("Overall took {:?}", total_duration);
-
     Ok(Json(PhenotypeSummary {
         phenotype_definition: request.phenotype_definition,
         cohort_id: request.cohort_id,
         phenotype_values,
         fit_quality_reference,
-        rsquared: r2,
+        rsquared,
     }))
 }
 
@@ -236,10 +265,10 @@ async fn post_igwas(
     State(state): State<Arc<AppState>>,
     Json(request): Json<WebGWASRequest>,
 ) -> Json<WebGWASResponse> {
-    let request_time = Instant::now();
-    info!("Received webgwas request");
-    // Validate the cohort and phenotype
     let unique_id = Uuid::new_v4();
+    tracing::info!(
+        request_id = %unique_id, cohort_id = %request.cohort_id, 
+        phenotype = %request.phenotype_definition, "Received webgwas request");
     match validate_phenotype_definition(
         request.cohort_id,
         &request.phenotype_definition,
@@ -258,7 +287,6 @@ async fn post_igwas(
             // Build the processed request
             let request = WebGWASRequestId {
                 id: unique_id,
-                request_time,
                 phenotype_definition: definition,
                 cohort_id: request.cohort_id,
             };
@@ -283,7 +311,6 @@ async fn get_igwas_results(
     State(state): State<Arc<AppState>>,
     Path(request_id): Path<Uuid>,
 ) -> Json<WebGWASResult> {
-    info!("Fetching WebGWAS result for {}", request_id);
     match state.results.lock().unwrap().get(&request_id) {
         Some(result) => Json(result.clone()),
         None => Json(WebGWASResult {
@@ -302,7 +329,6 @@ async fn get_igwas_pvalues(
     Path(request_id): Path<Uuid>,
     Query(query): Query<PvaluesQuery>,
 ) -> Json<PvaluesResponse> {
-    info!("Fetching WebGWAS p-values for {}", request_id);
     match state.results.lock().unwrap().get(&request_id) {
         Some(results) => match &results.local_result_file {
             Some(path) => match load_pvalues(path.to_path_buf(), query.min_neg_log_p) {

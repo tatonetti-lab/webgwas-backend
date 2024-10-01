@@ -9,7 +9,6 @@ use std::fs::File;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::{fmt::Display, path::Path};
-use tokio::time::Instant;
 use uuid::Uuid;
 
 #[derive(Serialize, FromRow, Debug)]
@@ -112,7 +111,6 @@ pub struct WebGWASRequest {
 
 pub struct WebGWASRequestId {
     pub id: Uuid,
-    pub request_time: Instant,
     pub phenotype_definition: Vec<Node>,
     pub cohort_id: i32,
 }

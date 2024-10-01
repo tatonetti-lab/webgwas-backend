@@ -9,7 +9,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::thread;
 use tokio::time::Duration;
-use tokio::time::Instant;
+use tracing::info_span;
 use zip::write::SimpleFileOptions;
 use zip::CompressionMethod;
 
@@ -31,7 +31,9 @@ pub fn worker_loop(state: Arc<AppState>) {
             queue.pop()
         };
         if let Some(request) = task {
-            info!("Got a request");
+            let _span = info_span!("main_worker_loop", request_id = %request.id,
+            )
+            .entered();
             let result = handle_webgwas_request(state.clone(), request);
             if let Err(err) = result {
                 info!("Failed to handle request: {}", err);
@@ -71,31 +73,24 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
     };
 
     // 2. Compute the projection variance
-    let projection_variance = {
-        let start = Instant::now();
-        let beta = &projection.feature_coefficient;
-        let projection_variance = beta.transpose() * &cohort_info.covariance_matrix * beta;
-        let duration = start.elapsed();
-        info!("Computing projection variance took {:?}", duration);
-        projection_variance
-    };
+    let beta = &projection.feature_coefficient;
+    let projection_variance = beta.transpose() * &cohort_info.covariance_matrix * beta;
 
     // 3. Compute GWAS
     let output_path = state
         .root_directory
         .join(format!("results/{}.tsv.zst", request.id));
-    let start = Instant::now();
-    run_igwas_df_impl(
-        &cohort_info.gwas_df,
-        &mut projection,
-        projection_variance,
-        cohort_info.cohort.num_covar.expect("Num_covar is missing") as usize,
-        &output_path,
-        16,
-    )?;
-    let duration = start.elapsed();
-    info!("GWAS took {:?}", duration);
-    let total_duration = request.request_time.elapsed();
+    {
+        let _span = info_span!("run_igwas_df_impl").entered();
+        run_igwas_df_impl(
+            &cohort_info.gwas_df,
+            &mut projection,
+            projection_variance,
+            cohort_info.cohort.num_covar.expect("Num_covar is missing") as usize,
+            &output_path,
+            16,
+        )?;
+    }
     {
         let mut results = state.results.lock().unwrap();
         let result = results
@@ -105,35 +100,26 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
         result.local_result_file = Some(output_path.clone());
     }
 
-    info!("Writing metadata");
     let metadata_file = create_metadata_file(&state, &request)?;
-    info!("Wrote metadata");
-    info!("Creating zip file");
     let output_zip_path = create_output_zip(&output_path, &metadata_file)?;
-    info!("Created zip file");
     std::fs::remove_file(metadata_file)?;
 
     let url = if state.settings.dry_run {
         info!("Dry run, skipping S3 upload");
         None
     } else {
-        let start = Instant::now();
+        let _span = info_span!("upload_and_get_url").entered();
         let key = format!("{}/{}.zip", state.settings.s3_result_path, request.id);
         let url = upload_and_get_url(&state, &output_zip_path, &key)?;
-        let duration = start.elapsed();
-        info!("Uploading took {:?}", duration);
         std::fs::remove_file(output_zip_path)?;
         Some(url)
     };
-
-    info!("Overall took {:?}", total_duration);
     {
         let mut results = state.results.lock().unwrap();
         let result = results.get_mut(&request.id).context("Result not found")?;
         result.status = WebGWASResultStatus::Done;
         result.url = url;
     }
-    info!("Done");
     Ok(())
 }
 
@@ -174,12 +160,12 @@ pub fn compute_projection(
             .context("Failed to apply phenotype definition")?;
         let phenotype_mat =
             series_to_col_vector(phenotype).context("Error converting Series to Col")?;
-        let start = Instant::now();
-        let mut beta = regress_left_inverse_vec(&phenotype_mat, &cohort_info.left_inverse);
-        // Drop the last element of the beta vector, which is the intercept
-        beta.truncate(beta.nrows() - 1);
-        let duration = start.elapsed();
-        info!("Regression took {:?}", duration);
+        let beta = {
+            let _span = info_span!("regress_left_inverse_vec").entered();
+            let mut beta = regress_left_inverse_vec(&phenotype_mat, &cohort_info.left_inverse);
+            beta.truncate(beta.nrows() - 1); // Drop the last element (the intercept)
+            beta
+        };
         let phenotype_names: Vec<String> = cohort_info
             .features_df
             .drop("intercept")?
