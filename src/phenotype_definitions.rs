@@ -355,7 +355,7 @@ pub fn format_phenotype_definition(nodes: &[Node]) -> String {
 
 pub fn format_node(node: &Node) -> String {
     match node {
-        Node::Feature(field) => format!("'{}'", field.name),
+        Node::Feature(field) => format!("'{}' [{}]", field.name, field.code),
         Node::Operator(op) => op.to_string(),
         Node::Constant(constant) => format!("`{}`", constant.value),
     }
