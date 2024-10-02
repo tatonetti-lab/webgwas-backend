@@ -1,7 +1,6 @@
 use anyhow::{anyhow, bail, Context, Result};
 use faer::Mat;
 use faer_ext::polars::polars_to_faer_f32;
-use log::info;
 use polars::prelude::*;
 use serde::{Deserialize, Serialize};
 use sqlx::prelude::FromRow;

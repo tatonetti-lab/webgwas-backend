@@ -46,6 +46,10 @@ fn main() {
     );
     match result {
         Ok(_) => {
+            app_state
+                .check_result()
+                .context("Final check failed")
+                .unwrap();
             info!("Successfully registered cohort '{}'", args.cohort_name);
         }
         Err(err) => {
@@ -210,6 +214,10 @@ pub struct PhenoOptions {
     /// Plink offset
     #[arg(long = "plink-offset", default_value_t = false)]
     plink_offset: bool,
+
+    /// Min sample size
+    #[arg(long = "min-sample-size")]
+    min_sample_size: Option<usize>,
 }
 
 #[derive(Parser, Debug)]
@@ -247,7 +255,7 @@ pub struct FeatureSets {
     pub gwas_files: HashSet<String>,
     pub info_file: HashSet<String>,
     pub gwas_feature_to_file: HashMap<String, PathBuf>,
-    pub final_features: HashSet<String>,
+    pub final_features: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -460,12 +468,9 @@ impl LocalAppState {
             .intersection(&self.feature_sets.gwas_files)
             .cloned()
             .collect();
-        self.feature_sets.final_features = self
-            .feature_sets
+        self.feature_sets
             .final_features
-            .intersection(&self.feature_sets.info_file)
-            .cloned()
-            .collect();
+            .retain(|x| self.feature_sets.info_file.contains(x));
         let num_final_features = self.feature_sets.final_features.len();
         info!("Found {} shared features", num_final_features);
         if num_final_features == 0 {
@@ -541,14 +546,10 @@ impl LocalAppState {
         pheno_options: PhenoOptions,
     ) -> Result<()> {
         info!("Reading phenotypes and covariates");
-        let pheno_cols = self
-            .feature_sets
-            .final_features
-            .iter()
-            .cloned()
-            .collect::<Vec<String>>();
+        let pheno_cols = self.feature_sets.final_features.to_vec();
         let start = Instant::now();
-        let data = read_phenotypes_covariates(&pheno_cols, pheno_file_spec, covar_file_spec, true)?;
+        let mut data =
+            read_phenotypes_covariates(&pheno_cols, pheno_file_spec, covar_file_spec, true)?;
         let duration = start.elapsed();
         info!("Reading phenotypes and covariates took {:?}", duration);
 
@@ -575,6 +576,37 @@ impl LocalAppState {
                 .unwrap()
                 .sample_size = Some(*sample_size);
         }
+        // Filter the data to remove features whose sample size is below the min sample size
+        let mut keep_name_to_index = HashMap::new();
+        for (index, phenotype_name) in data.phenotype_names.iter().enumerate() {
+            let sample_size = self
+                .feature_info_map
+                .get(phenotype_name)
+                .unwrap()
+                .sample_size
+                .unwrap();
+            if sample_size >= pheno_options.min_sample_size.unwrap_or(0) as f32 {
+                keep_name_to_index.insert(phenotype_name.clone(), index);
+            }
+        }
+        self.feature_sets
+            .final_features
+            .retain(|x| keep_name_to_index.contains_key(x));
+        let mut new_y = Mat::zeros(
+            data.y_phenotypes.nrows(),
+            self.feature_sets.final_features.len(),
+        );
+        for (i, name) in self.feature_sets.final_features.iter().enumerate() {
+            let index = keep_name_to_index.get(name).unwrap();
+            new_y.col_mut(i).copy_from(&data.y_phenotypes.col(*index));
+        }
+        info!(
+            "Filtered from {} to {} features",
+            data.y_phenotypes.ncols(),
+            new_y.ncols()
+        );
+        data.y_phenotypes = new_y;
+        data.phenotype_names = self.feature_sets.final_features.clone();
 
         info!("Computing partial covariance matrix");
         let start = Instant::now();
@@ -704,7 +736,12 @@ impl LocalAppState {
             .with_key("eta", |state: &ProgressState, w: &mut dyn Write| write!(w, "{:.1}s", state.eta().as_secs_f64()).unwrap())
             .progress_chars("#>-")
         );
-        for (feature_name, gwas_file) in self.feature_sets.gwas_feature_to_file.iter() {
+        for feature_name in self.feature_sets.final_features.iter() {
+            let gwas_file = self
+                .feature_sets
+                .gwas_feature_to_file
+                .get(feature_name)
+                .expect("Failed to get GWAS file");
             let this_gwas_df = CsvReadOptions::default()
                 .with_parse_options(parse_opts.clone())
                 .with_columns(Some(column_specs.clone()))
@@ -908,6 +945,101 @@ impl LocalAppState {
             "variant_id".into(),
         )?;
         Ok(variant_info_df)
+    }
+
+    pub fn check_result(&self) -> Result<()> {
+        let cov_path = self.cohort_directory.join("covariance.parquet");
+        let cov_file = File::open(cov_path)?;
+        let cov_schema = ParquetReader::new(cov_file).schema()?;
+        let cov_names = cov_schema
+            .iter_names_cloned()
+            .map(|x| x.to_string())
+            .collect::<Vec<String>>();
+
+        let pheno_path = self.cohort_directory.join("phenotypes.parquet");
+        let pheno_file = File::open(pheno_path)?;
+        let pheno_schema = ParquetReader::new(pheno_file).schema()?;
+        let mut pheno_names = pheno_schema
+            .iter_names_cloned()
+            .map(|x| x.to_string())
+            .collect::<Vec<String>>();
+        assert_eq!(
+            pheno_names.last().unwrap(),
+            "intercept",
+            "Covariance and phenotype column names do not match"
+        );
+        pheno_names.pop();
+
+        let li_path = self.cohort_directory.join("phenotype_left_inverse.parquet");
+        let li_file = File::open(li_path)?;
+        let li_schema = ParquetReader::new(li_file).schema()?;
+        let mut li_names = li_schema
+            .iter_names_cloned()
+            .map(|x| x.to_string())
+            .collect::<Vec<String>>();
+        assert_eq!(
+            li_names.last().unwrap(),
+            "intercept",
+            "Covariance and left inverse column names do not match"
+        );
+        li_names.pop();
+
+        let gwas_path = self.cohort_directory.join("gwas.parquet");
+        let gwas_file = File::open(gwas_path)?;
+        let gwas_schema = ParquetReader::new(gwas_file).schema()?;
+        let mut gwas_pheno_names = Vec::new();
+        let mut past_metadata = false;
+        for field in gwas_schema.iter_names() {
+            if field == "genotype_partial_variance" {
+                past_metadata = true;
+                continue;
+            }
+            if past_metadata {
+                gwas_pheno_names.push(field.to_string());
+            }
+        }
+
+        assert_eq!(
+            cov_names.len(),
+            pheno_names.len(),
+            "Covariance and phenotype column names do not match {:?}",
+            find_differences(&cov_names, &pheno_names)
+        );
+        assert_eq!(
+            cov_names.len(),
+            li_names.len(),
+            "Covariance and left inverse column names do not match {:?}",
+            find_differences(&cov_names, &li_names)
+        );
+        assert_eq!(
+            cov_names.len(),
+            gwas_pheno_names.len(),
+            "Covariance and GWAS column names do not match. Diff: {:?}",
+            find_differences(&cov_names, &gwas_pheno_names)
+        );
+
+        izip!(
+            cov_names.iter(),
+            pheno_names.iter(),
+            li_names.iter(),
+            gwas_pheno_names.iter()
+        )
+        .for_each(|(cov_field, pheno_field, li_field, gwas_field)| {
+            assert_eq!(
+                cov_field, pheno_field,
+                "Covariance and phenotype column names do not match"
+            );
+            assert_eq!(
+                cov_field, li_field,
+                "Covariance and left inverse column names do not match"
+            );
+            assert_eq!(
+                cov_field, gwas_field,
+                "Covariance and GWAS column names do not match"
+            );
+        });
+
+        Ok(())
     }
 
     pub fn cleanup(&mut self) -> Result<()> {
@@ -1215,6 +1347,12 @@ pub struct FeatureInsertRow {
     pub name: String,
     pub type_: String,
     pub sample_size: f32,
+}
+
+pub fn find_differences(a: &[String], b: &[String]) -> Vec<String> {
+    let left: Vec<String> = a.iter().filter(|x| !b.contains(x)).cloned().collect();
+    let right: Vec<String> = b.iter().filter(|x| !a.contains(x)).cloned().collect();
+    left.into_iter().chain(right).collect()
 }
 
 #[cfg(test)]
