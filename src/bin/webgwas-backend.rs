@@ -57,10 +57,7 @@ async fn main() {
 
     // Trace layer for the http server
     let trace_layer = TraceLayer::new_for_http().make_span_with(|request: &http::Request<_>| {
-        let conn_info = request.extensions().get::<ConnectInfo<SocketAddr>>();
-        let ip = conn_info
-            .map(|ci| ci.0.ip().to_string())
-            .unwrap_or_else(|| "unknown".to_string());
+        let ip = get_client_ip(request);
         tracing::info_span!(
             "API request",
             method = %request.method(),
@@ -363,4 +360,32 @@ async fn get_igwas_pvalues(
             chromosome_positions: None,
         }),
     }
+}
+
+fn get_client_ip<T>(request: &axum::http::Request<T>) -> String {
+    // Try to get the IP from the X-Forwarded-For header
+    if let Some(ip) = request
+        .headers()
+        .get("X-Forwarded-For")
+        .and_then(|hv| hv.to_str().ok())
+        .and_then(|s| s.split(',').next())
+    {
+        return ip.trim().to_string();
+    }
+
+    // If X-Forwarded-For is not available, try X-Real-IP
+    if let Some(ip) = request
+        .headers()
+        .get("X-Real-IP")
+        .and_then(|hv| hv.to_str().ok())
+    {
+        return ip.trim().to_string();
+    }
+
+    // If neither header is available, fall back to the direct connection IP
+    request
+        .extensions()
+        .get::<ConnectInfo<SocketAddr>>()
+        .map(|ci| ci.0.ip().to_string())
+        .unwrap_or_else(|| "unknown".to_string())
 }
