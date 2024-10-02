@@ -333,13 +333,25 @@ pub fn get_writer(path: &str) -> Result<arrow::csv::Writer<AutoFinishEncoder<Buf
         .build(compressed_writer))
 }
 
-pub fn write_dataframe(df: &mut DataFrame, path: &Path, n_threads: usize) -> Result<()> {
+pub fn write_dataframe(
+    df: &mut DataFrame,
+    path: &Path,
+    n_threads: usize,
+    compress: bool,
+) -> Result<()> {
     let file = File::create(path)?;
-    let compressed_writer = zstd::Encoder::new(file, 3)?.auto_finish();
-    CsvWriter::new(compressed_writer)
-        .with_separator(b'\t')
-        .n_threads(n_threads)
-        .finish(df)?;
+    if compress {
+        let compressed_writer = zstd::Encoder::new(file, 3)?.auto_finish();
+        CsvWriter::new(compressed_writer)
+            .with_separator(b'\t')
+            .n_threads(n_threads)
+            .finish(df)?;
+    } else {
+        CsvWriter::new(file)
+            .with_separator(b'\t')
+            .n_threads(n_threads)
+            .finish(df)?;
+    }
     Ok(())
 }
 
@@ -358,7 +370,7 @@ pub fn run_igwas_df_impl(
     debug!("Converting results to dataframe");
     let mut results_df = results_to_dataframe(result_stats)?;
     debug!("Writing results");
-    write_dataframe(&mut results_df, output_path, n_threads)?;
+    write_dataframe(&mut results_df, output_path, n_threads, false)?;
     Ok(())
 }
 
