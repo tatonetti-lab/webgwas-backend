@@ -46,6 +46,7 @@ fn main() {
     );
     match result {
         Ok(_) => {
+            info!("Checking results");
             app_state
                 .check_result()
                 .context("Final check failed")
