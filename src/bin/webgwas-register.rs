@@ -746,6 +746,7 @@ impl LocalAppState {
                 .with_parse_options(parse_opts.clone())
                 .with_columns(Some(column_specs.clone()))
                 .with_schema_overwrite(Some(schema.clone()))
+                .with_n_rows(gwas_options.keep_n_variants)
                 .try_into_reader_with_file_path(Some(gwas_file.clone()))?
                 .finish()
                 .context(format!("Failed to read GWAS file {}", gwas_file.display()))?
