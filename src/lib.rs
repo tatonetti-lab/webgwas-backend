@@ -43,7 +43,6 @@ pub struct AppState {
 
 impl AppState {
     pub async fn new(settings: Settings) -> Result<Self> {
-        info!("Initializing database");
         let home = std::env::var("HOME").expect("Failed to read $HOME");
         let root = Path::new(&home).join("webgwas");
         if std::fs::exists(root.join("results"))? {
@@ -73,7 +72,6 @@ impl AppState {
             .execute(&db)
             .await?;
 
-        info!("Loading cohorts");
         let cohort_id_to_data = sqlx::query_as::<_, Cohort>("SELECT * FROM cohort")
             .fetch_all(&db)
             .await
@@ -90,7 +88,6 @@ impl AppState {
             })
             .collect::<HashMap<i32, Arc<CohortData>>>();
 
-        info!("Fetching features");
         let fields = sqlx::query_as::<_, Feature>(
             "SELECT id, code, name, type as node_type, sample_size, cohort_id FROM feature",
         )
@@ -100,12 +97,10 @@ impl AppState {
         .unwrap();
         let kb = KnowledgeBase::new(fields);
 
-        info!("Initializing S3 client");
         let region = Region::new(settings.s3_region.clone());
         let shared_config = aws_config::from_env().region(region).load().await;
         let s3_client = Client::new(&shared_config);
 
-        info!("Loading fit quality reference");
         let fit_quality_path = root.join("fit_quality.parquet");
         let fit_quality_file = File::open(&fit_quality_path).context(anyhow!(
             "Failed to open fit quality file at {}",

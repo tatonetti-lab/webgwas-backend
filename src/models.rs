@@ -9,6 +9,7 @@ use std::fs::File;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::{fmt::Display, path::Path};
+use tracing::info_span;
 use uuid::Uuid;
 
 #[derive(Serialize, FromRow, Debug)]
@@ -287,8 +288,8 @@ pub struct CohortData {
 
 impl CohortData {
     pub fn load(cohort: Cohort, root_directory: &Path) -> Result<CohortData> {
+        let _span = info_span!("Load cohort: {}", cohort.name).entered();
         let cohort_root = root_directory.join("cohorts").join(&cohort.normalized_name);
-        info!("Loading features for {}", cohort_root.display());
         let features_file_path = cohort_root.join("phenotypes.parquet");
         let features_file = File::open(features_file_path).context(anyhow!(
             "Failed to open phenotype data file for {}",
@@ -296,7 +297,6 @@ impl CohortData {
         ))?;
         let features_df = ParquetReader::new(features_file).finish()?;
 
-        info!("Loading left inverse for {}", cohort_root.display());
         let left_inverse_file_path = cohort_root.join("phenotype_left_inverse.parquet");
         let left_inverse_file = File::open(left_inverse_file_path).context(anyhow!(
             "Failed to open left inverse file for {}",
@@ -307,7 +307,6 @@ impl CohortData {
             .transpose()
             .to_owned();
 
-        info!("Loading GWAS for {}", cohort_root.display());
         let gwas_file_path = cohort_root.join("gwas.parquet");
         let gwas_file = File::open(gwas_file_path).context(anyhow!(
             "Failed to open GWAS file for {}",
@@ -315,7 +314,6 @@ impl CohortData {
         ))?;
         let gwas_df = ParquetReader::new(gwas_file).finish()?;
 
-        info!("Loading covariance matrix for {}", cohort_root.display());
         let covariance_matrix_file_path = cohort_root.join("covariance.parquet");
         let covariance_matrix_file = File::open(covariance_matrix_file_path).context(anyhow!(
             "Failed to open covariance matrix file for {}",
@@ -323,7 +321,6 @@ impl CohortData {
         ))?;
         let covariance_matrix_df = ParquetReader::new(covariance_matrix_file).finish()?;
         let covariance_matrix = polars_to_faer_f32(covariance_matrix_df.lazy())?;
-        info!("Finished loading cohort info for {}", cohort_root.display());
 
         Ok(CohortData {
             cohort,
