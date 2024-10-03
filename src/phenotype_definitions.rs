@@ -370,7 +370,7 @@ mod tests {
         let nodes = vec![
             Node::Feature(Feature {
                 id: 0,
-                code: "age".to_string(),
+                code: "1".to_string(),
                 name: "age".to_string(),
                 node_type: NodeType::Real,
                 sample_size: 0,
@@ -383,7 +383,7 @@ mod tests {
             Node::Operator(Operators::Gt),
             Node::Feature(Feature {
                 id: 0,
-                code: "sex".to_string(),
+                code: "2".to_string(),
                 name: "sex".to_string(),
                 node_type: NodeType::Bool,
                 sample_size: 0,
@@ -391,7 +391,7 @@ mod tests {
             }),
             Node::Feature(Feature {
                 id: 0,
-                code: "male".to_string(),
+                code: "3".to_string(),
                 name: "male".to_string(),
                 node_type: NodeType::Bool,
                 sample_size: 0,
@@ -401,6 +401,9 @@ mod tests {
             Node::Operator(Operators::And),
         ];
         let result = format_phenotype_definition(&nodes);
-        assert_eq!(result, "AND(GT('age', `30`), EQ('sex', 'male'))");
+        assert_eq!(
+            result,
+            "AND(GT('age' [1], `30`), EQ('sex' [2], 'male' [3]))"
+        );
     }
 }
