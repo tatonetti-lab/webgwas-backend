@@ -23,7 +23,7 @@ pub mod models;
 pub mod phenotype_definitions;
 pub mod regression;
 pub mod render_results;
-mod utils;
+pub mod utils;
 pub mod worker;
 
 use crate::config::Settings;

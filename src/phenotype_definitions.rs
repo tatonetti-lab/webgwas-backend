@@ -2,9 +2,7 @@ use std::collections::HashMap;
 use std::str::FromStr;
 
 use anyhow::{anyhow, bail, Context, Result};
-use itertools::izip;
-use polars::prelude::*;
-use polars::series::arithmetic::LhsNumOps;
+use faer::Mat;
 
 use crate::models::{Constant, Feature, Node, NodeType, Operators, ParsingNode};
 
@@ -169,18 +167,18 @@ pub fn validate_phenotype_definition(
     Ok(valid_nodes)
 }
 
-pub fn apply_phenotype_definition(definition: &[Node], df: &DataFrame) -> Result<Series> {
-    let mut stack: Vec<Series> = Vec::new();
+pub fn apply_phenotype_definition(
+    definition: &[Node],
+    names: &[String],
+    phenotypes: &Mat<f32>,
+) -> Result<Vec<f32>> {
+    let mut stack = Vec::new();
     for node in definition {
         match node {
             Node::Feature(field) => {
-                stack.push(
-                    df.column(field.code.as_str())
-                        .unwrap()
-                        .as_series()
-                        .unwrap()
-                        .clone(),
-                );
+                let idx = names.iter().position(|x| *x == field.code).unwrap();
+                let column = phenotypes.col(idx).iter().copied().collect::<Vec<f32>>();
+                stack.push(column);
             }
             Node::Operator(op) => {
                 let operator_value = op.value();
@@ -194,10 +192,11 @@ pub fn apply_phenotype_definition(definition: &[Node], df: &DataFrame) -> Result
                         ))?;
                         match op {
                             Operators::Root => {
-                                stack.push(item.clone());
+                                stack.push(item);
                             }
                             Operators::Not => {
-                                let result = 1_f32.sub(&item);
+                                let result =
+                                    item.iter().map(|x| (1.0_f32 - x)).collect::<Vec<f32>>();
                                 stack.push(result);
                             }
                             _ => {
@@ -220,69 +219,79 @@ pub fn apply_phenotype_definition(definition: &[Node], df: &DataFrame) -> Result
                         ))?;
                         match op {
                             Operators::Add => {
-                                let result = item1 + item2;
-                                stack.push(result?);
+                                let result =
+                                    item1.iter().zip(item2.iter()).map(|(x, y)| x + y).collect();
+                                stack.push(result);
                             }
                             Operators::Sub => {
-                                let result = item1 - item2;
-                                stack.push(result?);
+                                let result =
+                                    item1.iter().zip(item2.iter()).map(|(x, y)| x - y).collect();
+                                stack.push(result);
                             }
                             Operators::Mul => {
-                                let result = item1 * item2;
-                                stack.push(result?);
+                                let result =
+                                    item1.iter().zip(item2.iter()).map(|(x, y)| x * y).collect();
+                                stack.push(result);
                             }
                             Operators::Div => {
-                                let result = item1 / item2;
-                                stack.push(result?);
+                                let result =
+                                    item1.iter().zip(item2.iter()).map(|(x, y)| x / y).collect();
+                                stack.push(result);
                             }
                             Operators::And => {
-                                let result = izip!(
-                                    item1
-                                        .f32()?
-                                        .into_iter()
-                                        .map(|x| x.expect("Item1 not found")),
-                                    item2
-                                        .f32()?
-                                        .into_iter()
-                                        .map(|x| x.expect("Item2 not found"))
-                                )
-                                .map(|(x, y)| x.min(y))
-                                .collect();
+                                let result = item1
+                                    .iter()
+                                    .zip(item2.iter())
+                                    .map(|(x, y)| x.min(*y))
+                                    .collect();
                                 stack.push(result);
                             }
                             Operators::Or => {
-                                let result = izip!(
-                                    item1
-                                        .f32()?
-                                        .into_iter()
-                                        .map(|x| x.expect("Item1 not found")),
-                                    item2
-                                        .f32()?
-                                        .into_iter()
-                                        .map(|x| x.expect("Item2 not found"))
-                                )
-                                .map(|(x, y)| x.max(y))
-                                .collect();
+                                let result = item1
+                                    .iter()
+                                    .zip(item2.iter())
+                                    .map(|(x, y)| x.max(*y))
+                                    .collect();
                                 stack.push(result);
                             }
                             Operators::Gt => {
-                                let result = item1.gt(&item2)?.into_series();
+                                let result = item1
+                                    .iter()
+                                    .zip(item2.iter())
+                                    .map(|(x, y)| if x > y { 1.0 } else { 0.0 })
+                                    .collect();
                                 stack.push(result);
                             }
                             Operators::Ge => {
-                                let result = item1.gt_eq(&item2)?.into_series();
+                                let result = item1
+                                    .iter()
+                                    .zip(item2.iter())
+                                    .map(|(x, y)| if x >= y { 1.0 } else { 0.0 })
+                                    .collect();
                                 stack.push(result);
                             }
                             Operators::Lt => {
-                                let result = item1.lt(&item2)?.into_series();
+                                let result = item1
+                                    .iter()
+                                    .zip(item2.iter())
+                                    .map(|(x, y)| if x < y { 1.0 } else { 0.0 })
+                                    .collect();
                                 stack.push(result);
                             }
                             Operators::Le => {
-                                let result = item1.lt_eq(&item2)?.into_series();
+                                let result = item1
+                                    .iter()
+                                    .zip(item2.iter())
+                                    .map(|(x, y)| if x <= y { 1.0 } else { 0.0 })
+                                    .collect();
                                 stack.push(result);
                             }
                             Operators::Eq => {
-                                let result = item1.equal(&item2)?.into_series();
+                                let result = item1
+                                    .iter()
+                                    .zip(item2.iter())
+                                    .map(|(x, y)| if x == y { 1.0 } else { 0.0 })
+                                    .collect();
                                 stack.push(result);
                             }
                             _ => {
@@ -302,7 +311,7 @@ pub fn apply_phenotype_definition(definition: &[Node], df: &DataFrame) -> Result
             Node::Constant(constant) => {
                 let constant_value = constant.value;
                 let result = std::iter::repeat(constant_value)
-                    .take(df.height())
+                    .take(phenotypes.nrows())
                     .collect();
                 stack.push(result);
             }
@@ -311,7 +320,7 @@ pub fn apply_phenotype_definition(definition: &[Node], df: &DataFrame) -> Result
     if stack.len() != 1 {
         bail!("Invalid definition stack: {:?}", stack);
     }
-    let result = stack.pop().unwrap().cast(&DataType::Float32)?;
+    let result = stack.pop().unwrap();
     Ok(result)
 }
 

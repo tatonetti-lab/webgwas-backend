@@ -1,5 +1,6 @@
 use anyhow::Result;
 use faer::Col;
+use num::cast::AsPrimitive;
 use polars::series::Series;
 
 /// Get everything up to and including the item
@@ -36,4 +37,12 @@ pub fn series_to_col_vector(series: Series) -> Result<Col<f32>> {
         result[i] = x.expect("Failed to get value");
     });
     Ok(result)
+}
+
+pub fn vec_to_col<T: AsPrimitive<f32>>(vec: &[T]) -> Col<f32> {
+    let mut result = Col::zeros(vec.len());
+    for (i, x) in vec.iter().enumerate() {
+        result.write(i, (*x).as_());
+    }
+    result
 }

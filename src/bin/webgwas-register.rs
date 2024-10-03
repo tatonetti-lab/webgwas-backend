@@ -1,6 +1,6 @@
 use anyhow::{bail, Context, Result};
 use clap::Parser;
-use faer::{Col, Mat};
+use faer::Mat;
 use faer_ext::polars::polars_to_faer_f32;
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 use itertools::izip;
@@ -29,6 +29,7 @@ use webgwas_backend::regression::compute_weighted_ridge_pseudoinverse;
 use webgwas_backend::{
     models::Cohort,
     regression::{compute_covariance, residualize_covariates, transpose_vec_vec},
+    utils::vec_to_col,
 };
 
 fn main() {
@@ -364,7 +365,8 @@ impl LocalAppState {
             |row| row.get(0),
         )?;
         let tx = self.db.transaction()?;
-        for feature_info_row in self.feature_info_map.values() {
+        for feature in self.feature_sets.final_features.iter() {
+            let feature_info_row = self.feature_info_map.get(feature).unwrap();
             tx.execute(
                 "INSERT INTO feature (code, name, type, sample_size, cohort_id) VALUES (?1, ?2, ?3, ?4, ?5)",
                 params![
@@ -1186,14 +1188,6 @@ pub fn vec_vec_to_mat(vecs: Vec<Vec<f32>>) -> Mat<f32> {
         }
     }
     mat
-}
-
-pub fn vec_to_col(vec: &[usize]) -> Col<f32> {
-    let mut result = Col::zeros(vec.len());
-    for (i, x) in vec.iter().enumerate() {
-        result.write(i, *x as f32);
-    }
-    result
 }
 
 pub fn write_parquet(df: &mut DataFrame, path: &Path) -> Result<()> {

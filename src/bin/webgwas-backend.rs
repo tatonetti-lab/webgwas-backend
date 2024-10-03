@@ -4,13 +4,10 @@ use axum::{
     routing::{get, post, put},
     Json, Router,
 };
-use faer::Col;
-use faer_ext::polars::polars_to_faer_f32;
 use itertools::izip;
 use log::{error, info};
 use phenotype_definitions::{apply_phenotype_definition, validate_phenotype_definition};
-use polars::prelude::*;
-use std::{iter::repeat, sync::Arc};
+use std::sync::Arc;
 use std::{net::SocketAddr, thread};
 use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLayer};
 use tracing::info_span;
@@ -19,7 +16,6 @@ use tracing_subscriber::Layer;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
 use uuid::Uuid;
 
-use webgwas_backend::regression::regress_left_inverse_vec;
 use webgwas_backend::AppState;
 use webgwas_backend::{config::Settings, models::PhenotypeSummaryRequest};
 use webgwas_backend::{errors::WebGWASError, worker::worker_loop};
@@ -32,6 +28,7 @@ use webgwas_backend::{
     },
     render_results::load_pvalues,
 };
+use webgwas_backend::{regression::regress_left_inverse_vec, utils::vec_to_col};
 
 #[tokio::main]
 async fn main() {
@@ -163,6 +160,8 @@ async fn get_phenotype_summary(
     State(state): State<Arc<AppState>>,
     Json(request): Json<PhenotypeSummaryRequest>,
 ) -> Result<Json<PhenotypeSummary>, WebGWASError> {
+    // TODO: Figure out how to reduce memory usage here
+    // TODO: Reduce the amount of code duplication here
     // 1. Validate the phenotype definition
     let definition = match validate_phenotype_definition(
         request.cohort_id,
@@ -179,63 +178,48 @@ async fn get_phenotype_summary(
         let binding = state.cohort_id_to_data.lock().unwrap();
         binding.get(&request.cohort_id).unwrap().clone()
     };
-    let phenotype = apply_phenotype_definition(&definition, &cohort_info.features_df)
-        .context(anyhow!("Failed to apply phenotype definition"))?;
-    let mut phenotype_mat = Col::zeros(phenotype.len());
-    phenotype.f32()?.iter().enumerate().for_each(|(i, x)| {
-        phenotype_mat[i] = x.expect("Failed to get phenotype value");
-    });
+    let phenotype = apply_phenotype_definition(
+        &definition,
+        &cohort_info.feature_names,
+        &cohort_info.features,
+    )
+    .context(anyhow!("Failed to apply phenotype definition"))?;
+    let phenotype_col = vec_to_col(&phenotype);
 
     // 3. Regress the phenotype against the features
-    let beta = {
+    let (beta, intercept) = {
         let _span = info_span!("regress_left_inverse_vec").entered();
-        regress_left_inverse_vec(&phenotype_mat, &cohort_info.left_inverse)
+        let mut beta = regress_left_inverse_vec(&phenotype_col, &cohort_info.left_inverse);
+        let intercept = beta.read(beta.nrows() - 1);
+        beta.truncate(beta.nrows() - 1);
+        (beta, intercept)
     };
-
     let phenotype_pred = {
         let _span = info_span!("polars_to_faer_f32").entered();
-        polars_to_faer_f32(cohort_info.features_df.clone().lazy())? * &beta
+        let intercept_col = vec_to_col(&vec![intercept; phenotype_col.nrows()]);
+        cohort_info.features.as_ref() * beta + intercept_col
     };
 
-    let phenotype_pred_df = DataFrame::new(vec![
-        Column::new(
-            "approx_value".into(),
-            phenotype_pred.iter().collect::<Series>(),
-        ),
-        Column::new("true_value".into(), phenotype),
-        Column::new(
-            "count".into(),
-            repeat(1).take(phenotype_pred.nrows()).collect::<Series>(),
-        ),
-    ])?
-    .group_by(["approx_value", "true_value"])?
-    .select(["count"])
-    .count()?;
-    let phenotype_values = izip!(
-        phenotype_pred_df.column("true_value")?.f32()?.into_iter(),
-        phenotype_pred_df.column("approx_value")?.f32()?.into_iter(),
-        phenotype_pred_df.column("count_count")?.u32()?.into_iter(),
-    )
-    .map(|(x, y, n)| {
-        Some(ApproximatePhenotypeValues {
-            true_value: x?,
-            approx_value: y?,
-            n: n? as i32,
+    let phenotype_values = izip!(phenotype.iter(), phenotype_pred.iter())
+        .map(|(x, y)| {
+            Some(ApproximatePhenotypeValues {
+                true_value: *x,
+                approx_value: *y,
+            })
         })
-    })
-    .take(request.n_samples.unwrap_or(phenotype_pred.nrows()))
-    .collect::<Option<Vec<ApproximatePhenotypeValues>>>()
-    .context("Failed to calculate phenotype values")?;
+        .take(request.n_samples.unwrap_or(phenotype_pred.nrows()))
+        .collect::<Option<Vec<ApproximatePhenotypeValues>>>()
+        .context("Failed to calculate phenotype values")?;
 
     // 4. Calculate the fit quality
     let rsquared = {
         let _span = info_span!("compute_rsquared").entered();
-        let rss = (&phenotype_pred - &phenotype_mat)
+        let rss = (&phenotype_pred - &phenotype_col)
             .iter()
             .map(|x| x.powi(2))
             .sum::<f32>();
-        let mean = phenotype_mat.sum() / phenotype_mat.nrows() as f32;
-        let tss = phenotype_mat
+        let mean = phenotype_col.sum() / phenotype_col.nrows() as f32;
+        let tss = phenotype_col
             .iter()
             .map(|x| (x - mean).powi(2))
             .sum::<f32>();

@@ -200,7 +200,6 @@ pub struct ApproximatePhenotypeValues {
     pub true_value: f32,
     #[serde(rename = "a", serialize_with = "round_to_decimals")]
     pub approx_value: f32,
-    pub n: i32,
 }
 
 #[derive(Clone, Serialize)]
@@ -279,7 +278,8 @@ pub struct GetFeaturesRequest {
 
 pub struct CohortData {
     pub cohort: Cohort,
-    pub features_df: DataFrame,
+    pub feature_names: Vec<String>,
+    pub features: Mat<f32>,
     pub left_inverse: Mat<f32>,
     pub gwas_df: DataFrame,
     pub covariance_matrix: Mat<f32>,
@@ -295,6 +295,12 @@ impl CohortData {
             cohort_root.display()
         ))?;
         let features_df = ParquetReader::new(features_file).finish()?;
+        let feature_names = features_df
+            .get_column_names()
+            .iter()
+            .map(|x| x.to_string())
+            .collect::<Vec<String>>();
+        let features = polars_to_faer_f32(features_df.lazy())?;
 
         let left_inverse_file_path = cohort_root.join("phenotype_left_inverse.parquet");
         let left_inverse_file = File::open(left_inverse_file_path).context(anyhow!(
@@ -323,7 +329,8 @@ impl CohortData {
 
         Ok(CohortData {
             cohort,
-            features_df,
+            feature_names,
+            features,
             left_inverse,
             gwas_df,
             covariance_matrix,

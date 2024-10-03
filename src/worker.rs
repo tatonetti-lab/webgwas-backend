@@ -17,7 +17,7 @@ use crate::igwas::{run_igwas_df_impl, Projection};
 use crate::models::{CohortData, Node, RequestMetadata};
 use crate::phenotype_definitions::format_phenotype_definition;
 use crate::regression::regress_left_inverse_vec;
-use crate::utils::series_to_col_vector;
+use crate::utils::vec_to_col;
 use crate::AppState;
 use crate::{
     models::{WebGWASRequestId, WebGWASResultStatus},
@@ -135,14 +135,7 @@ pub fn compute_projection(
                 let phenotype_names = vec![feature.code.clone()];
                 let mut projection = Projection::new(phenotype_names, beta)?;
                 // Standardize to the full feature names
-                let mut feature_names = cohort_info
-                    .features_df
-                    .get_column_names()
-                    .iter()
-                    .map(|x| x.to_string())
-                    .collect::<Vec<String>>();
-                feature_names.truncate(feature_names.len() - 1);
-                projection.standardize(&feature_names);
+                projection.standardize(&cohort_info.feature_names);
                 if !projection.feature_id.contains(&feature.code) {
                     bail!("Feature {} not found after standardization", feature.code);
                 }
@@ -156,24 +149,20 @@ pub fn compute_projection(
             }
         }
     } else {
-        let phenotype = apply_phenotype_definition(phenotype_definition, &cohort_info.features_df)
-            .context("Failed to apply phenotype definition")?;
-        let phenotype_mat =
-            series_to_col_vector(phenotype).context("Error converting Series to Col")?;
+        let phenotype = apply_phenotype_definition(
+            phenotype_definition,
+            &cohort_info.feature_names,
+            &cohort_info.features,
+        )
+        .context("Failed to apply phenotype definition")?;
+        let phenotype_mat = vec_to_col(&phenotype);
         let beta = {
             let _span = info_span!("regress_left_inverse_vec").entered();
             let mut beta = regress_left_inverse_vec(&phenotype_mat, &cohort_info.left_inverse);
             beta.truncate(beta.nrows() - 1); // Drop the last element (the intercept)
             beta
         };
-        let phenotype_names: Vec<String> = cohort_info
-            .features_df
-            .drop("intercept")?
-            .get_column_names()
-            .iter()
-            .map(|x| x.to_string())
-            .collect();
-        let projection = Projection::new(phenotype_names, beta)?;
+        let projection = Projection::new(cohort_info.feature_names.clone(), beta)?;
         Ok(projection)
     }
 }
@@ -243,7 +232,7 @@ pub fn create_metadata_file(state: &AppState, request: &WebGWASRequestId) -> Res
         request.id,
         format_phenotype_definition(&request.phenotype_definition),
         cohort_info.cohort.name.clone(),
-        cohort_info.features_df.height(),
+        cohort_info.features.nrows(),
     );
     let output_metadata_path = state
         .root_directory
