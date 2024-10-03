@@ -40,7 +40,7 @@ mdav = { git = "https://github.com/zietzm/mdav", version = "0.4.0" }
 indicatif = "0.17.8"
 zip = "2.2.0"
 tracing = "0.1.40"
-tracing-subscriber = { version = "0.3.18", features = ["chrono", "env-filter", "json"] }
+tracing-subscriber = { version = "0.3.18", features = ["fmt", "chrono", "env-filter", "json", "local-time", "time"] }
 tracing-bunyan-formatter = "0.3.9"
 hyper = { version = "1.4.1", features = ["full"] }
 tracing-appender = "0.2.3"
