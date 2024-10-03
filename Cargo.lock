@@ -2757,12 +2757,13 @@ dependencies = [
 
 [[package]]
 name = "mdav"
-version = "0.4.0"
-source = "git+https://github.com/zietzm/mdav#6a9de2b5fdb9463954803d6f15a6b7ce9aa55845"
+version = "0.5.1"
+source = "git+https://github.com/zietzm/mdav#dda0761b8bd9cd5adc8f06c0152dc36ad3eac9d6"
 dependencies = [
  "anyhow",
  "clap",
  "indicatif",
+ "log",
  "num",
  "rayon",
 ]

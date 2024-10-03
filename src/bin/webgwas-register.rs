@@ -468,6 +468,7 @@ impl LocalAppState {
         self.feature_sets
             .final_features
             .retain(|x| self.feature_sets.info_file.contains(x));
+        self.feature_sets.final_features.sort();
         let num_final_features = self.feature_sets.final_features.len();
         info!("Found {} shared features", num_final_features);
         if num_final_features == 0 {
