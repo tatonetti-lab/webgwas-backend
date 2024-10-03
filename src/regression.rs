@@ -1,5 +1,7 @@
+use core::f32;
+
 use anyhow::{bail, Result};
-use faer::{Col, Mat};
+use faer::{unzipped, zipped, Col, ComplexField, Mat, RealField};
 
 pub fn add_intercept(x: &mut Mat<f32>) {
     x.resize_with(x.nrows(), x.ncols() + 1, |_, _| 1.0);
@@ -23,6 +25,35 @@ pub fn compute_left_inverse(x: &Mat<f32>) -> Result<Mat<f32>> {
         bail!("Failed to compute left inverse");
     }
     Ok(result)
+}
+
+pub fn compute_weighted_ridge_pseudoinverse(
+    x: &Mat<f32>,
+    w: &Col<f32>, // Vector of weights (assumed positive)
+    lambda: f32,  // Regularization parameter
+) -> Mat<f32> {
+    let w_sqrt = w.iter().map(|wi| wi.sqrt()).collect::<Vec<f32>>();
+    let w_sqrt = faer::col::from_slice(&w_sqrt);
+    let x_w = w_sqrt.column_vector_as_diagonal() * x;
+    let svd = x_w.thin_svd();
+    let s = svd.s_diagonal();
+
+    let epsilon = f32::faer_epsilon().faer_scale_power_of_two(8.0);
+    let s_max = s.read(0).faer_real();
+    let sv_tolerance = epsilon.faer_mul(s_max);
+    let mut r = 0usize;
+    while r < s.nrows() && s.read(r).faer_real() > sv_tolerance {
+        r += 1;
+    }
+    let s_adj = zipped!(s.get(..r)).map(|unzipped!(s)| {
+        let sigma = s.read().faer_real();
+        let sigma_sq = sigma.faer_mul(sigma);
+        let denom = sigma_sq.faer_add(lambda);
+        sigma.faer_div(denom)
+    });
+    ((svd.v().get(.., ..r) * s_adj.as_ref().column_vector_as_diagonal())
+        * svd.u().get(.., ..r).adjoint())
+        * w_sqrt.column_vector_as_diagonal()
 }
 
 pub fn regress_left_inverse_vec(endog: &Col<f32>, exog_left_inverse: &Mat<f32>) -> Col<f32> {

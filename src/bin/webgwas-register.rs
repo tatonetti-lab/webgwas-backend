@@ -1,6 +1,6 @@
 use anyhow::{bail, Context, Result};
 use clap::Parser;
-use faer::Mat;
+use faer::{Col, Mat};
 use faer_ext::polars::polars_to_faer_f32;
 use indicatif::{ProgressBar, ProgressState, ProgressStyle};
 use itertools::izip;
@@ -24,12 +24,11 @@ use tracing::info_span;
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::fmt::time::ChronoLocal;
 use webgwas_backend::models::NodeType;
+use webgwas_backend::regression::compute_weighted_ridge_pseudoinverse;
 
 use webgwas_backend::{
     models::Cohort,
-    regression::{
-        compute_covariance, compute_left_inverse, residualize_covariates, transpose_vec_vec,
-    },
+    regression::{compute_covariance, residualize_covariates, transpose_vec_vec},
 };
 
 fn main() {
@@ -631,7 +630,7 @@ impl LocalAppState {
             write_parquet(&mut covariance_df, &covar_path)?;
         }
 
-        let anonymized_phenotypes = {
+        let mdav_result = {
             let _span = info_span!("Anonymizing phenotypes").entered();
             let n_samples = match pheno_options.keep_n_samples {
                 Some(n) => n,
@@ -645,18 +644,19 @@ impl LocalAppState {
                 .collect::<Vec<Vec<f32>>>();
             mdav(raw_phenotypes, pheno_options.k_anonymity)?
         };
-        let (anonymized_phenotypes_df, column_names) = {
+        assert_eq!(
+            mdav_result.centroids.len(),
+            mdav_result.n_occurrences.len(),
+            "MDAV result has different lengths"
+        );
+        let mut anonymized_phenotypes_df = {
             let _span = info_span!("Processing anonymized phenotypes").entered();
             let mut anonymized_phenotypes_df =
-                vec_vec_to_polars(anonymized_phenotypes, &data.phenotype_names)?
-                    .lazy()
-                    .with_column(lit(1.0).cast(DataType::Float32).alias("intercept"))
-                    .collect()?;
-            let column_names = anonymized_phenotypes_df
-                .get_column_names()
-                .iter()
-                .map(|&x| x.to_string())
-                .collect::<Vec<String>>();
+                vec_vec_to_polars(mdav_result.centroids, &data.phenotype_names)?;
+            info!(
+                "Anonymized phenotypes shape {:?}",
+                anonymized_phenotypes_df.shape()
+            );
             if pheno_options.plink_offset {
                 let mut df = anonymized_phenotypes_df.lazy();
                 for feature_code in self.feature_sets.final_features.iter() {
@@ -674,16 +674,26 @@ impl LocalAppState {
             }
             let pheno_path = self.cohort_directory.join("phenotypes.parquet");
             write_parquet(&mut anonymized_phenotypes_df, &pheno_path)?;
-            (anonymized_phenotypes_df, column_names)
+            anonymized_phenotypes_df
         };
 
         let left_inverse = {
             let _span = info_span!("Computing left inverse").entered();
+            anonymized_phenotypes_df.with_column(Column::new_scalar(
+                "intercept".into(),
+                Scalar::new(DataType::Float32, AnyValue::Float32(1.0)),
+                anonymized_phenotypes_df.height(),
+            ))?;
             let anonymized_phenotype_mat = polars_to_faer_f32(anonymized_phenotypes_df.lazy())?;
-            compute_left_inverse(&anonymized_phenotype_mat)?
+            let mut count_col = vec_to_col(&mdav_result.n_occurrences);
+            let min = mdav_result.n_occurrences.iter().min().unwrap();
+            count_col.iter_mut().for_each(|x| *x = { *x } / *min as f32);
+            compute_weighted_ridge_pseudoinverse(&anonymized_phenotype_mat, &count_col, 1.0)
                 .transpose()
                 .to_owned()
         };
+        let mut column_names = data.phenotype_names.clone();
+        column_names.push("intercept".to_string());
         let _span = info_span!("Writing left inverse").entered();
         let mut left_inverse_df = mat_to_polars(left_inverse, &column_names)?;
         let left_inverse_path = self.cohort_directory.join("phenotype_left_inverse.parquet");
@@ -1178,6 +1188,14 @@ pub fn vec_vec_to_mat(vecs: Vec<Vec<f32>>) -> Mat<f32> {
     mat
 }
 
+pub fn vec_to_col(vec: &[usize]) -> Col<f32> {
+    let mut result = Col::zeros(vec.len());
+    for (i, x) in vec.iter().enumerate() {
+        result.write(i, *x as f32);
+    }
+    result
+}
+
 pub fn write_parquet(df: &mut DataFrame, path: &Path) -> Result<()> {
     let file = File::create(path)?;
     let writer = BufWriter::new(file);
@@ -1265,16 +1283,10 @@ pub fn check_result(cohort_directory: &Path) -> Result<()> {
     let pheno_path = cohort_directory.join("phenotypes.parquet");
     let pheno_file = File::open(pheno_path)?;
     let pheno_schema = ParquetReader::new(pheno_file).schema()?;
-    let mut pheno_names = pheno_schema
+    let pheno_names = pheno_schema
         .iter_names_cloned()
         .map(|x| x.to_string())
         .collect::<Vec<String>>();
-    assert_eq!(
-        pheno_names.last().unwrap(),
-        "intercept",
-        "Covariance and phenotype column names do not match"
-    );
-    pheno_names.pop();
 
     let li_path = cohort_directory.join("phenotype_left_inverse.parquet");
     let li_file = File::open(li_path)?;
