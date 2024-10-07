@@ -87,7 +87,7 @@ async fn main() {
         )
         .layer(trace_layer)
         .layer(CorsLayer::permissive())
-        .layer(CompressionLayer::new().zstd(true))
+        .layer(CompressionLayer::new().gzip(true).deflate(true).br(true).zstd(true))
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();
