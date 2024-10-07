@@ -5,8 +5,7 @@ use itertools::izip;
 use log::debug;
 use polars::prelude::*;
 use statrs::distribution::{ContinuousCDF, StudentsT};
-use std::{fs::File, io::BufWriter, path::Path};
-use zstd::stream::AutoFinishEncoder;
+use std::{fs::File, path::Path};
 
 use crate::utils::{slice_after_excl, slice_before, slice_before_excl};
 
@@ -316,21 +315,6 @@ pub fn results_to_dataframe(result_stats: ResultStats) -> Result<DataFrame> {
     ]);
     let df = DataFrame::new(cols)?;
     Ok(df)
-}
-
-pub fn read_dataframe(path: &str) -> Result<DataFrame> {
-    let input_file = File::open(path)?;
-    let df = ParquetReader::new(input_file).finish()?;
-    Ok(df)
-}
-
-pub fn get_writer(path: &str) -> Result<arrow::csv::Writer<AutoFinishEncoder<BufWriter<File>>>> {
-    let file = File::create(path)?;
-    let buffer_writer = BufWriter::new(file);
-    let compressed_writer = zstd::Encoder::new(buffer_writer, 3)?.auto_finish();
-    Ok(arrow::csv::WriterBuilder::new()
-        .with_delimiter(b'\t')
-        .build(compressed_writer))
 }
 
 pub fn write_dataframe(

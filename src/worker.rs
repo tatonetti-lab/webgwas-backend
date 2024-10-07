@@ -79,7 +79,7 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
     // 3. Compute GWAS
     let output_path = state
         .root_directory
-        .join(format!("results/{}.tsv.zst", request.id));
+        .join(format!("results/{}.tsv", request.id));
     {
         let _span = info_span!("run_igwas_df_impl").entered();
         run_igwas_df_impl(
@@ -263,7 +263,7 @@ where
 pub fn create_output_zip(output_path: &Path, metadata_path: &Path) -> Result<PathBuf> {
     let output_zip_path = output_path.with_extension("").with_extension("zip");
     let mut zip_writer = zip::ZipWriter::new(File::create(output_zip_path.clone())?);
-    add_file_to_zip(&mut zip_writer, output_path, "results.tsv.zst")?;
+    add_file_to_zip(&mut zip_writer, output_path, "results.tsv")?;
     add_file_to_zip(&mut zip_writer, metadata_path, "metadata.txt")?;
     zip_writer.finish()?;
     Ok(output_zip_path)

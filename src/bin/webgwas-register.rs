@@ -23,9 +23,9 @@ use std::{
 use tracing::info_span;
 use tracing_subscriber::fmt::format::FmtSpan;
 use tracing_subscriber::fmt::time::ChronoLocal;
+
 use webgwas_backend::models::NodeType;
 use webgwas_backend::regression::compute_weighted_ridge_pseudoinverse;
-
 use webgwas_backend::{
     models::Cohort,
     regression::{compute_covariance, residualize_covariates, transpose_vec_vec},
