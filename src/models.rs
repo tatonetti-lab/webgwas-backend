@@ -144,49 +144,6 @@ pub struct WebGWASResult {
     pub local_result_file: Option<PathBuf>,
 }
 
-#[derive(Deserialize)]
-pub struct PvaluesQuery {
-    #[serde(rename = "minp")]
-    pub min_neg_log_p: Option<f32>,
-}
-
-#[derive(Serialize)]
-pub struct PvaluesResponse {
-    pub request_id: Uuid,
-    pub status: WebGWASResultStatus,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub error_msg: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pvalues: Option<Vec<Pvalue>>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub chromosome_positions: Option<Vec<ChromosomePosition>>,
-}
-
-pub struct PvaluesResult {
-    pub pvalues: Vec<Pvalue>,
-    pub chromosome_positions: Vec<ChromosomePosition>,
-}
-
-#[derive(Debug, Serialize)]
-pub struct Pvalue {
-    #[serde(rename = "i")]
-    pub index: i32,
-    #[serde(rename = "p", serialize_with = "round_to_decimals")]
-    pub pvalue: f32,
-    #[serde(rename = "c")]
-    pub chromosome: String,
-    #[serde(rename = "l")]
-    pub label: String,
-}
-
-#[derive(Serialize)]
-pub struct ChromosomePosition {
-    #[serde(rename = "c")]
-    pub chromosome: String,
-    #[serde(rename = "m")]
-    pub midpoint: i32,
-}
-
 pub fn round_to_decimals<S>(value: &f32, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: serde::Serializer,

@@ -17,12 +17,12 @@ use std::{
 use uuid::Uuid;
 
 pub mod config;
+pub mod endpoints;
 pub mod errors;
 pub mod igwas;
 pub mod models;
 pub mod phenotype_definitions;
 pub mod regression;
-pub mod render_results;
 pub mod utils;
 pub mod worker;
 

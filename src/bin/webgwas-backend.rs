@@ -19,14 +19,11 @@ use uuid::Uuid;
 use webgwas_backend::AppState;
 use webgwas_backend::{config::Settings, models::PhenotypeSummaryRequest};
 use webgwas_backend::{errors::WebGWASError, worker::worker_loop};
-use webgwas_backend::{models::PvaluesQuery, phenotype_definitions};
-use webgwas_backend::{
-    models::{
+use webgwas_backend::phenotype_definitions;
+use webgwas_backend::models::{
         ApproximatePhenotypeValues, CohortResponse, FeatureResponse, GetFeaturesRequest,
-        PhenotypeFitQuality, PhenotypeSummary, PvaluesResponse, ValidPhenotypeResponse,
+        PhenotypeFitQuality, PhenotypeSummary, ValidPhenotypeResponse,
         WebGWASRequest, WebGWASRequestId, WebGWASResponse, WebGWASResult, WebGWASResultStatus,
-    },
-    render_results::load_pvalues,
 };
 use webgwas_backend::{regression::regress_left_inverse_vec, utils::vec_to_col};
 
@@ -83,7 +80,7 @@ async fn main() {
         .route("/api/igwas/results/:request_id", get(get_igwas_results))
         .route(
             "/api/igwas/results/pvalues/:request_id",
-            get(get_igwas_pvalues),
+            post(webgwas_backend::endpoints::pvalues::get_igwas_pvalues),
         )
         .layer(trace_layer)
         .layer(CorsLayer::permissive())
@@ -300,48 +297,6 @@ async fn get_igwas_results(
             error_msg: Some(format!("No result found for request {}", request_id)),
             url: None,
             local_result_file: None,
-        }),
-    }
-}
-
-#[axum::debug_handler]
-async fn get_igwas_pvalues(
-    State(state): State<Arc<AppState>>,
-    Path(request_id): Path<Uuid>,
-    Query(query): Query<PvaluesQuery>,
-) -> Json<PvaluesResponse> {
-    match state.results.lock().unwrap().get(&request_id) {
-        Some(results) => match &results.local_result_file {
-            Some(path) => match load_pvalues(path.to_path_buf(), query.min_neg_log_p) {
-                Ok(result) => Json(PvaluesResponse {
-                    request_id,
-                    status: WebGWASResultStatus::Done,
-                    error_msg: None,
-                    pvalues: Some(result.pvalues),
-                    chromosome_positions: Some(result.chromosome_positions),
-                }),
-                Err(err) => Json(PvaluesResponse {
-                    request_id,
-                    status: WebGWASResultStatus::Error,
-                    error_msg: Some(format!("Failed to load p-values: {:#}", err)),
-                    pvalues: None,
-                    chromosome_positions: None,
-                }),
-            },
-            None => Json(PvaluesResponse {
-                request_id,
-                status: WebGWASResultStatus::Error,
-                error_msg: Some(format!("No local file found for request {}", request_id)),
-                pvalues: None,
-                chromosome_positions: None,
-            }),
-        },
-        None => Json(PvaluesResponse {
-            request_id,
-            status: WebGWASResultStatus::Error,
-            error_msg: Some(format!("No result found for request {}", request_id)),
-            pvalues: None,
-            chromosome_positions: None,
         }),
     }
 }
