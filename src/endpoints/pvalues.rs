@@ -18,10 +18,10 @@ use crate::{models::round_to_decimals, models::WebGWASResultStatus, AppState};
 
 #[derive(Deserialize)]
 pub struct PvaluesQuery {
+    pub cohort_id: Option<i32>,
     pub features: Option<Vec<String>>,
     #[serde(rename = "minp")]
     pub min_neg_log_p: Option<f32>,
-    pub cohort_id: Option<i32>,
 }
 
 #[derive(Serialize)]
@@ -50,6 +50,8 @@ pub struct Pvalue {
     pub color: i32,
     #[serde(rename = "l")]
     pub label: String,
+    #[serde(skip_serializing)]
+    pub chrbp: String,
 }
 
 #[derive(Serialize)]
@@ -252,6 +254,13 @@ fn build_chromosome_index(df: &DataFrame) -> Result<Column, AppError> {
 
 fn extract_pvalue_vec(df: &DataFrame) -> Result<Vec<Pvalue>, AppError> {
     let pvalues: Vec<Pvalue> = izip!(
+        df.column("variant_id")
+            .map_err(|_| AppError::ProcessingError("`variant_id` column not found".to_string()))?
+            .str()
+            .map_err(|_| AppError::ProcessingError(
+                "`variant_id` column is not string".to_string()
+            ))?
+            .into_iter(),
         df.column("neg_log_p_value")
             .map_err(|_| AppError::ProcessingError(
                 "`neg_log_p_value` column not found".to_string()
@@ -274,7 +283,7 @@ fn extract_pvalue_vec(df: &DataFrame) -> Result<Vec<Pvalue>, AppError> {
             ))?
             .i32()
             .map_err(|_| AppError::ProcessingError(
-                "`chromosome_idnex` column is not i32".to_string()
+                "`chromosome_index` column is not i32".to_string()
             ))?
             .into_iter(),
         df.column("rsid")
@@ -284,12 +293,13 @@ fn extract_pvalue_vec(df: &DataFrame) -> Result<Vec<Pvalue>, AppError> {
             .into_iter(),
     )
     .enumerate()
-    .map(|(i, (pvalue, chromosome, chr_idx, rsid))| Pvalue {
+    .map(|(i, (chrbp, pvalue, chromosome, chr_idx, rsid))| Pvalue {
         index: i as i32,
         pvalue: pvalue.expect("Failed to get pvalue"),
         chromosome: chromosome.expect("Failed to get chromosome").to_string(),
         color: chr_idx.expect("Failed to get chromosome"),
         label: rsid.expect("Failed to get rsid").to_string(),
+        chrbp: chrbp.expect("Failed to get chrbp").to_string(),
     })
     .collect();
     Ok(pvalues)
@@ -390,7 +400,7 @@ fn color_hits(input: PvaluesResult, hits: Vec<SignificantHit>) -> PvaluesResult 
         .pvalues
         .into_iter()
         .map(|x| {
-            let color = match variant_to_hit_combo.get(&x.label) {
+            let color = match variant_to_hit_combo.get(&x.chrbp) {
                 Some(combo) => *combo_to_color.get(combo).unwrap(),
                 None => x.color,
             };
@@ -400,6 +410,7 @@ fn color_hits(input: PvaluesResult, hits: Vec<SignificantHit>) -> PvaluesResult 
                 chromosome: x.chromosome,
                 color,
                 label: x.label,
+                chrbp: x.chrbp,
             }
         })
         .collect::<Vec<Pvalue>>();
@@ -432,6 +443,7 @@ mod tests {
                 chromosome: "1".to_string(),
                 color: 1,
                 label: "rs1".to_string(),
+                chrbp: "1:1".to_string(),
             },
             Pvalue {
                 index: 1,
@@ -439,6 +451,7 @@ mod tests {
                 chromosome: "1".to_string(),
                 color: 1,
                 label: "rs2".to_string(),
+                chrbp: "1:2".to_string(),
             },
             Pvalue {
                 index: 2,
@@ -446,6 +459,7 @@ mod tests {
                 chromosome: "Y".to_string(),
                 color: 2,
                 label: "rs3".to_string(),
+                chrbp: "Y:1".to_string(),
             },
             Pvalue {
                 index: 3,
@@ -453,6 +467,7 @@ mod tests {
                 chromosome: "Y".to_string(),
                 color: 2,
                 label: "rs4".to_string(),
+                chrbp: "Y:2".to_string(),
             },
         ];
         let result = extract_chromosome_positions(&pvalues);
