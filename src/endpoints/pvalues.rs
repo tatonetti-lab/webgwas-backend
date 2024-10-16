@@ -6,11 +6,7 @@ use itertools::{izip, Itertools};
 use polars::prelude::*;
 use serde::{Deserialize, Serialize};
 use sqlx::{FromRow, Pool, Sqlite};
-use std::{
-    collections::{HashMap, HashSet},
-    path::PathBuf,
-    sync::Arc,
-};
+use std::{collections::HashMap, path::PathBuf, sync::Arc};
 use thiserror::Error;
 use uuid::Uuid;
 
@@ -35,7 +31,7 @@ pub struct PvaluesResponse {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub chromosome_positions: Option<Vec<ChromosomePosition>>,
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub color_map: Option<HashMap<i32, String>>,
+    pub color_map: Option<Vec<String>>,
 }
 
 #[derive(Debug, Serialize)]
@@ -172,7 +168,7 @@ fn validate_features(
 struct PvaluesResult {
     pvalues: Vec<Pvalue>,
     chromosome_positions: Vec<ChromosomePosition>,
-    color_map: HashMap<i32, String>,
+    color_map: Vec<String>,
 }
 
 /// Load p-values from a result file
@@ -196,9 +192,7 @@ fn load_pvalues(path: PathBuf, min_neg_log_p: Option<f32>) -> Result<PvaluesResu
         .map_err(|_| AppError::ProcessingError("Error sorting dataframe".to_string()))?;
     let pvalues = extract_pvalue_vec(&df)?;
     let chromosome_positions = extract_chromosome_positions(&pvalues);
-    let color_map = (0..23)
-        .map(|x| (x, index_to_chrom(x)))
-        .collect::<HashMap<i32, String>>();
+    let color_map = (0..23).map(index_to_chrom).collect::<Vec<String>>();
     Ok(PvaluesResult {
         pvalues,
         chromosome_positions,
@@ -387,13 +381,20 @@ fn color_hits(input: PvaluesResult, hits: Vec<SignificantHit>) -> PvaluesResult 
         .values()
         .unique()
         .cloned()
-        .collect::<HashSet<String>>();
-    let mut max_current = *input.color_map.keys().max().unwrap_or(&23);
+        .sorted_by(|a, b| {
+            if a.len() == b.len() {
+                a.cmp(b) // Alphabetical for equal length
+            } else {
+                a.len().cmp(&b.len()) // Otherwise, shorter first
+            }
+        })
+        .collect::<Vec<String>>();
+    let mut max_current = 23_i32;
     let mut color_map = input.color_map;
-    let mut combo_to_color = HashMap::new();
+    let mut combo_to_color: HashMap<String, i32> = HashMap::new();
     for combo in unique_combos.into_iter() {
         max_current += 1;
-        color_map.insert(max_current, combo.clone());
+        color_map.push(combo.clone());
         combo_to_color.insert(combo, max_current);
     }
     let pvalues = input
