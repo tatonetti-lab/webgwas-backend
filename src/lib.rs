@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use aws_config::Region;
 use aws_sdk_s3::Client;
 use log::info;
@@ -30,7 +30,7 @@ use crate::config::Settings;
 use crate::models::{CohortData, Feature, PhenotypeFitQuality, WebGWASRequestId, WebGWASResult};
 
 pub struct AppState {
-    pub root_directory: PathBuf,
+    pub results_directory: PathBuf,
     pub settings: Settings,
     pub db: SqlitePool,
     pub s3_client: aws_sdk_s3::Client,
@@ -43,11 +43,10 @@ pub struct AppState {
 
 impl AppState {
     pub async fn new(settings: Settings) -> Result<Self> {
-        let home = std::env::var("HOME").expect("Failed to read $HOME");
-        let root = Path::new(&home).join("webgwas");
-        if std::fs::exists(root.join("results"))? {
+        let results_dir = Path::new(&settings.results_path);
+        if std::fs::exists(results_dir)? {
             info!("Results directory already exists, clearing");
-            match std::fs::remove_dir_all(root.join("results")) {
+            match std::fs::remove_dir_all(results_dir) {
                 Ok(_) => {}
                 Err(err) => {
                     return Err(anyhow!("Failed to clear results directory: {}", err));
@@ -55,8 +54,12 @@ impl AppState {
             }
             info!("Results directory cleared");
         }
-        std::fs::create_dir_all(root.join("results"))?;
-        let db_path = root.join("webgwas.db").display().to_string();
+        std::fs::create_dir_all(results_dir)?;
+        let data_dir = Path::new(&settings.data_path);
+        if !std::fs::exists(data_dir)? {
+            bail!("Data path does not exist");
+        }
+        let db_path = data_dir.join("webgwas.db").display().to_string();
         let db = SqlitePoolOptions::new()
             .max_connections(20)
             .connect(&db_path)
@@ -77,7 +80,7 @@ impl AppState {
             .await
             .context("Failed to fetch cohorts")?
             .into_iter()
-            .map(|cohort| -> Result<CohortData> { CohortData::load(cohort, &root) })
+            .map(|cohort| -> Result<CohortData> { CohortData::load(cohort, data_dir) })
             .collect::<Result<Vec<CohortData>>>()?
             .into_iter()
             .map(|cohort_data| {
@@ -101,7 +104,7 @@ impl AppState {
         let shared_config = aws_config::from_env().region(region).load().await;
         let s3_client = Client::new(&shared_config);
 
-        let fit_quality_path = root.join("fit_quality.parquet");
+        let fit_quality_path = data_dir.join("fit_quality.parquet");
         let fit_quality_file = File::open(&fit_quality_path).context(anyhow!(
             "Failed to open fit quality file at {}",
             fit_quality_path.display()
@@ -124,7 +127,7 @@ impl AppState {
         let results = Arc::new(Mutex::new(ResultsCache::new(settings.cache_capacity)));
 
         let state = AppState {
-            root_directory: root,
+            results_directory: results_dir.to_path_buf(),
             settings,
             db,
             s3_client,

@@ -77,9 +77,7 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
     let projection_variance = beta.transpose() * &cohort_info.covariance_matrix * beta;
 
     // 3. Compute GWAS
-    let output_path = state
-        .root_directory
-        .join(format!("results/{}.tsv", request.id));
+    let output_path = state.results_directory.join(format!("{}.tsv", request.id));
     {
         let _span = info_span!("run_igwas_df_impl").entered();
         run_igwas_df_impl(
@@ -234,9 +232,7 @@ pub fn create_metadata_file(state: &AppState, request: &WebGWASRequestId) -> Res
         cohort_info.cohort.name.clone(),
         cohort_info.features.nrows(),
     );
-    let output_metadata_path = state
-        .root_directory
-        .join(format!("results/{}.txt", request.id));
+    let output_metadata_path = state.results_directory.join(format!("{}.txt", request.id));
     let mut metadata_file = File::create(output_metadata_path.clone())?;
     write!(metadata_file, "{}", metadata)?;
     Ok(output_metadata_path)
