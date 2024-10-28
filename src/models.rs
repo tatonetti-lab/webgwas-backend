@@ -111,6 +111,7 @@ pub struct WebGWASRequest {
 
 pub struct WebGWASRequestId {
     pub id: Uuid,
+    pub raw_definition: String,
     pub phenotype_definition: Vec<Node>,
     pub cohort_id: i32,
 }
@@ -119,7 +120,6 @@ pub struct WebGWASRequestId {
 #[serde(rename_all = "lowercase")]
 pub enum WebGWASResultStatus {
     Queued,
-    Uploading,
     Done,
     Error,
 }
@@ -138,10 +138,19 @@ pub struct WebGWASResult {
     pub status: WebGWASResultStatus,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error_msg: Option<String>,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub url: Option<String>,
     #[serde(skip_serializing)]
     pub local_result_file: Option<PathBuf>,
+    #[serde(skip_serializing)]
+    pub local_zip_file: Option<PathBuf>,
+}
+
+#[derive(Debug, FromRow)]
+pub struct CacheRow {
+    pub request_id: String,
+    pub cohort_id: i32,
+    pub phenotype_definition: String,
+    pub result_file: String,
+    pub zip_file: String,
 }
 
 pub fn round_to_decimals<S>(value: &f32, serializer: S) -> Result<S::Ok, S::Error>

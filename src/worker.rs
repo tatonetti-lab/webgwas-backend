@@ -1,7 +1,7 @@
-use anyhow::{bail, Context, Result};
-use aws_sdk_s3::presigning::PresigningConfig;
+use anyhow::{anyhow, bail, Context, Result};
 use faer::Col;
 use log::info;
+use rusqlite::{params, Connection};
 use std::fs::File;
 use std::io::{BufReader, Seek, Write};
 use std::path::Path;
@@ -14,7 +14,7 @@ use zip::write::SimpleFileOptions;
 use zip::CompressionMethod;
 
 use crate::igwas::{run_igwas_df_impl, Projection};
-use crate::models::{CohortData, Node, RequestMetadata};
+use crate::models::{CacheRow, CohortData, Node, RequestMetadata};
 use crate::phenotype_definitions::format_phenotype_definition;
 use crate::regression::regress_left_inverse_vec;
 use crate::utils::vec_to_col;
@@ -25,6 +25,8 @@ use crate::{
 };
 
 pub fn worker_loop(state: Arc<AppState>) {
+    let db =
+        rusqlite::Connection::open(format!("{}/webgwas.db", state.settings.data_path)).unwrap();
     loop {
         let task = {
             let mut queue = state.queue.lock().unwrap();
@@ -34,9 +36,13 @@ pub fn worker_loop(state: Arc<AppState>) {
             let _span = info_span!("main_worker_loop", request_id = %request.id,
             )
             .entered();
-            let result = handle_webgwas_request(state.clone(), request);
-            if let Err(err) = result {
-                info!("Failed to handle request: {}", err);
+            match handle_webgwas_request(state.clone(), request) {
+                Ok(result) => {
+                    if let Err(err) = write_sqlite_cache(&db, result) {
+                        info!("Failed to write cache row: {}", err)
+                    }
+                }
+                Err(err) => info!("Failed to handle request: {}", err),
             }
         } else {
             thread::sleep(Duration::from_millis(10));
@@ -44,7 +50,7 @@ pub fn worker_loop(state: Arc<AppState>) {
     }
 }
 
-pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -> Result<()> {
+pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -> Result<CacheRow> {
     // 0. Load the cohort info (relevant data for this request)
     let cohort_info = {
         let binding = state.cohort_id_to_data.lock().unwrap();
@@ -89,36 +95,32 @@ pub fn handle_webgwas_request(state: Arc<AppState>, request: WebGWASRequestId) -
             16,
         )?;
     }
+    let metadata_file = create_metadata_file(&state, &request)?;
+    let output_zip_path = create_output_zip(&output_path, &metadata_file)?;
+    std::fs::remove_file(metadata_file)?;
+    let cache_row = CacheRow {
+        request_id: request.id.to_string(),
+        cohort_id: request.cohort_id,
+        phenotype_definition: request.raw_definition,
+        result_file: output_path
+            .to_str()
+            .ok_or(anyhow!("Can't get output path"))?
+            .to_string(),
+        zip_file: output_zip_path
+            .to_str()
+            .ok_or(anyhow!("Can't get zip path"))?
+            .to_string(),
+    };
     {
         let mut results = state.results.lock().unwrap();
         let result = results
             .get_mut(&request.id)
             .context("Failed to get result")?;
-        result.status = WebGWASResultStatus::Uploading;
-        result.local_result_file = Some(output_path.clone());
-    }
-
-    let metadata_file = create_metadata_file(&state, &request)?;
-    let output_zip_path = create_output_zip(&output_path, &metadata_file)?;
-    std::fs::remove_file(metadata_file)?;
-
-    let url = if state.settings.dry_run {
-        info!("Dry run, skipping S3 upload");
-        None
-    } else {
-        let _span = info_span!("upload_and_get_url").entered();
-        let key = format!("{}/{}.zip", state.settings.s3_result_path, request.id);
-        let url = upload_and_get_url(&state, &output_zip_path, &key)?;
-        std::fs::remove_file(output_zip_path)?;
-        Some(url)
-    };
-    {
-        let mut results = state.results.lock().unwrap();
-        let result = results.get_mut(&request.id).context("Result not found")?;
+        result.local_result_file = Some(output_path);
+        result.local_zip_file = Some(output_zip_path);
         result.status = WebGWASResultStatus::Done;
-        result.url = url;
     }
-    Ok(())
+    Ok(cache_row)
 }
 
 pub fn compute_projection(
@@ -163,56 +165,6 @@ pub fn compute_projection(
         let projection = Projection::new(cohort_info.feature_names.clone(), beta)?;
         Ok(projection)
     }
-}
-
-pub async fn upload_object(
-    client: &aws_sdk_s3::Client,
-    file_name: &Path,
-    bucket_name: &str,
-    key: &str,
-) -> Result<aws_sdk_s3::operation::put_object::PutObjectOutput> {
-    let body = aws_sdk_s3::primitives::ByteStream::from_path(file_name).await?;
-    let result = client
-        .put_object()
-        .bucket(bucket_name)
-        .key(key)
-        .body(body)
-        .send()
-        .await?;
-    Ok(result)
-}
-
-pub fn upload_and_get_url(state: &AppState, output_zip_path: &Path, key: &str) -> Result<String> {
-    let rt = tokio::runtime::Runtime::new()?;
-    let url = rt.block_on(async { upload_and_get_url_async(state, output_zip_path, key).await })?;
-    Ok(url)
-}
-
-async fn upload_and_get_url_async(
-    state: &AppState,
-    output_zip_path: &Path,
-    key: &str,
-) -> Result<String> {
-    upload_object(
-        &state.s3_client,
-        output_zip_path,
-        &state.settings.s3_bucket,
-        key,
-    )
-    .await
-    .context("Failed to upload object")?;
-    const URL_EXPIRES_IN: Duration = Duration::from_secs(3600);
-    let url = state
-        .s3_client
-        .get_object()
-        .bucket(&state.settings.s3_bucket)
-        .key(key)
-        .presigned(PresigningConfig::expires_in(URL_EXPIRES_IN)?)
-        .await
-        .context("Failed to get presigned URL")?
-        .uri()
-        .to_string();
-    Ok(url)
 }
 
 pub fn create_metadata_file(state: &AppState, request: &WebGWASRequestId) -> Result<PathBuf> {
@@ -263,4 +215,20 @@ pub fn create_output_zip(output_path: &Path, metadata_path: &Path) -> Result<Pat
     add_file_to_zip(&mut zip_writer, metadata_path, "metadata.txt")?;
     zip_writer.finish()?;
     Ok(output_zip_path)
+}
+
+fn write_sqlite_cache(conn: &Connection, result: CacheRow) -> Result<()> {
+    conn.execute(
+        "INSERT OR REPLACE INTO cache (
+            request_id, cohort_id, phenotype_definition, result_file, zip_file,
+            last_accessed) VALUES (?1, ?2, ?3, ?4, ?5, unixepoch())",
+        params![
+            result.request_id,
+            result.cohort_id,
+            result.phenotype_definition,
+            result.result_file,
+            result.zip_file
+        ],
+    )?;
+    Ok(())
 }

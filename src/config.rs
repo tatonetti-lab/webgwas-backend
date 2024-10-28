@@ -19,10 +19,6 @@ pub struct Settings {
     pub log_path: String,
     pub data_path: String,
     pub results_path: String,
-    pub s3_region: String,
-    pub s3_bucket: String,
-    pub s3_result_path: String,
-    pub dry_run: bool,
 }
 
 impl Settings {

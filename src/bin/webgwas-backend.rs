@@ -7,6 +7,7 @@ use axum::{
 use itertools::izip;
 use log::{error, info};
 use phenotype_definitions::{apply_phenotype_definition, validate_phenotype_definition};
+use sqlx::SqlitePool;
 use std::sync::Arc;
 use std::{net::SocketAddr, thread};
 use tower_http::{compression::CompressionLayer, cors::CorsLayer, trace::TraceLayer};
@@ -16,7 +17,7 @@ use tracing_subscriber::Layer;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
 use uuid::Uuid;
 
-use webgwas_backend::AppState;
+use webgwas_backend::{models::CacheRow, remove_cache_entry, AppState};
 use webgwas_backend::{config::Settings, models::PhenotypeSummaryRequest};
 use webgwas_backend::{errors::WebGWASError, worker::worker_loop};
 use webgwas_backend::phenotype_definitions;
@@ -239,6 +240,7 @@ async fn get_phenotype_summary(
     }))
 }
 
+#[axum::debug_handler]
 async fn post_igwas(
     State(state): State<Arc<AppState>>,
     Json(request): Json<WebGWASRequest>,
@@ -247,6 +249,19 @@ async fn post_igwas(
     tracing::info!(
         request_id = %unique_id, cohort_id = %request.cohort_id, 
         phenotype = %request.phenotype_definition, "Received webgwas request");
+
+    let cached_result = get_cached_results(&state.db, request.cohort_id, &request.phenotype_definition).await;
+    if let Ok(Some(result)) = cached_result {
+        if let Ok(request_id) = Uuid::parse_str(&result.request_id) {
+            info!("Found cached result");
+            return Json(WebGWASResponse {
+                request_id,
+                status: WebGWASResultStatus::Done,
+                message: None
+            })
+        }
+    }
+    info!("Cache miss");
     match validate_phenotype_definition(
         request.cohort_id,
         &request.phenotype_definition,
@@ -257,14 +272,26 @@ async fn post_igwas(
                 request_id: unique_id,
                 status: WebGWASResultStatus::Queued,
                 error_msg: None,
-                url: None,
                 local_result_file: None,
+                local_zip_file: None,
             };
-            state.results.lock().unwrap().insert(result);
+
+            let maybe_popped = state.results.lock().unwrap().insert(result);
+            if let Some(popped) = maybe_popped {
+                let result_file = popped.local_result_file.expect("Expected to find a local result file");
+                let zip_file = popped.local_zip_file.expect("Expected to find a local zip file");
+                let pop_result = remove_cache_entry(&state.db, &popped.request_id.to_string(), &result_file, &zip_file).await;
+                if let Err(err) = pop_result {
+                    error!("Error removing local files: {}", err)
+                } else {
+                    info!("Removed file without error")
+                }
+            }
 
             // Build the processed request
             let request = WebGWASRequestId {
                 id: unique_id,
+                raw_definition: request.phenotype_definition,
                 phenotype_definition: definition,
                 cohort_id: request.cohort_id,
             };
@@ -295,8 +322,8 @@ async fn get_igwas_results(
             request_id,
             status: WebGWASResultStatus::Error,
             error_msg: Some(format!("No result found for request {}", request_id)),
-            url: None,
             local_result_file: None,
+            local_zip_file: None,
         }),
     }
 }
@@ -329,4 +356,17 @@ fn get_client_ip<T>(request: &axum::http::Request<T>) -> String {
         .get::<ConnectInfo<SocketAddr>>()
         .map(|ci| ci.0.ip().to_string())
         .unwrap_or_else(|| "unknown".to_string())
+}
+
+async fn get_cached_results(db: &SqlitePool, cohort_id: i32, phenotype_definition: &str) -> Result<Option<CacheRow>> {
+    let result = sqlx::query_as::<_, CacheRow>(
+        "SELECT request_id, cohort_id, phenotype_definition, result_file, zip_file
+        FROM cache
+        WHERE cohort_id = $1 AND phenotype_definition = $2",
+    )
+    .bind(cohort_id)
+    .bind(phenotype_definition)
+    .fetch_optional(db)
+    .await?;
+    Ok(result)
 }
