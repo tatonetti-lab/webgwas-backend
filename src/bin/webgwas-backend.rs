@@ -83,6 +83,7 @@ async fn main() {
             "/api/igwas/results/pvalues/:request_id",
             post(webgwas_backend::endpoints::pvalues::get_igwas_pvalues),
         )
+        .route("/api/download/:request_id", get(webgwas_backend::endpoints::download::download_stream))
         .layer(trace_layer)
         .layer(CorsLayer::permissive())
         .layer(CompressionLayer::new().gzip(true).deflate(true).br(true).zstd(true))
