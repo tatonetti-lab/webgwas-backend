@@ -1,6 +1,4 @@
 cache_capacity = 1000
 log_path = "logs"
-# data_path = "data"
 data_path = "/Users/zietzm/webgwas/"
-# results_path = "results"
 results_path = "/Users/zietzm/webgwas/results/"
