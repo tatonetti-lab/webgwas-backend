@@ -119,6 +119,7 @@ pub struct WebGWASRequestId {
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "lowercase")]
 pub enum WebGWASResultStatus {
+    Cached,
     Queued,
     Done,
     Error,

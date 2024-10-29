@@ -208,7 +208,7 @@ impl ResultsCache {
         for row in rows.into_iter() {
             let result = WebGWASResult {
                 request_id: Uuid::parse_str(&row.request_id)?,
-                status: WebGWASResultStatus::Done,
+                status: WebGWASResultStatus::Cached,
                 error_msg: None,
                 local_result_file: Some(PathBuf::from_str(&row.result_file)?),
                 local_zip_file: Some(PathBuf::from_str(&row.zip_file)?),

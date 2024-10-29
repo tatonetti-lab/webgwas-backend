@@ -257,7 +257,7 @@ async fn post_igwas(
             info!("Found cached result");
             return Json(WebGWASResponse {
                 request_id,
-                status: WebGWASResultStatus::Done,
+                status: WebGWASResultStatus::Cached,
                 message: None
             })
         }
