@@ -1,4 +1,4 @@
 cache_capacity = 1000
-log_path = "logs"
-data_path = "/Users/zietzm/webgwas/"
-results_path = "/Users/zietzm/webgwas/results/"
+log_path = "/opt/webgwas/logs"
+data_path = "/opt/webgwas/data"
+results_path = "/opt/webgwas/results"
