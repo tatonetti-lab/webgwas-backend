@@ -1,6 +1,6 @@
 [package]
 name = "webgwas-backend"
-version = "0.7.3"
+version = "0.8.0"
 edition = "2021"
 authors = ["Michael Zietz <michael.zietz@gmail.com>"]
 
@@ -47,3 +47,4 @@ tracing-appender = "0.2.3"
 http = "1.1.0"
 num = "0.4.3"
 thiserror = "1.0.64"
+tokio-util = "0.7.12"
