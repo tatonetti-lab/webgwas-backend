@@ -199,7 +199,7 @@ where
     W: Write + Seek,
 {
     let options = SimpleFileOptions::default()
-        .compression_method(CompressionMethod::Deflated)
+        .compression_method(CompressionMethod::Stored)
         .unix_permissions(0o644);
     let file = File::open(file_path)?;
     let mut buffered_reader = BufReader::new(file);
@@ -209,6 +209,7 @@ where
 }
 
 pub fn create_output_zip(output_path: &Path, metadata_path: &Path) -> Result<PathBuf> {
+    let _span = info_span!("create_output_zip").entered();
     let output_zip_path = output_path.with_extension("").with_extension("zip");
     let mut zip_writer = zip::ZipWriter::new(File::create(output_zip_path.clone())?);
     add_file_to_zip(&mut zip_writer, output_path, "results.tsv")?;
