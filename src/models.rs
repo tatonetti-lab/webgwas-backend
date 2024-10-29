@@ -8,7 +8,7 @@ use std::fs::File;
 use std::path::PathBuf;
 use std::str::FromStr;
 use std::{fmt::Display, path::Path};
-use tracing::info_span;
+use tracing::debug_span;
 use uuid::Uuid;
 
 #[derive(Serialize, FromRow, Debug)]
@@ -254,7 +254,7 @@ pub struct CohortData {
 
 impl CohortData {
     pub fn load(cohort: Cohort, root_directory: &Path) -> Result<CohortData> {
-        let _span = info_span!("Load cohort: {}", cohort.name).entered();
+        let _span = debug_span!("Load cohort", cohort.name).entered();
         let cohort_root = root_directory.join("cohorts").join(&cohort.normalized_name);
         let features_file_path = cohort_root.join("phenotypes.parquet");
         let features_file = File::open(features_file_path).context(anyhow!(

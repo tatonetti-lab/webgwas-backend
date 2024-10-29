@@ -34,7 +34,7 @@ polars = { git = "https://github.com/pola-rs/polars", version = "0.43.1", featur
 zstd = "0.13.2"
 statrs = "0.17.1"
 arrow = "53.0.0"
-faer = "0.19.4"
+faer = { version = "0.19.4", features = ["perf-warn", "rayon", "nightly"] }
 faer-ext = { path = "/Users/zietzm/Documents/git/faer-ext/", version = "0.2.0", features = ["polars"] }
 mdav = { git = "https://github.com/zietzm/mdav", version = "0.5.2" }
 indicatif = "0.17.8"
@@ -48,3 +48,4 @@ http = "1.1.0"
 num = "0.4.3"
 thiserror = "1.0.64"
 tokio-util = "0.7.12"
+rayon = "1.10.0"

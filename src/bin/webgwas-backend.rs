@@ -17,15 +17,15 @@ use tracing_subscriber::Layer;
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt};
 use uuid::Uuid;
 
-use webgwas_backend::{models::CacheRow, remove_cache_entry, AppState};
+use webgwas_backend::models::{
+    ApproximatePhenotypeValues, CohortResponse, FeatureResponse, GetFeaturesRequest,
+    PhenotypeFitQuality, PhenotypeSummary, ValidPhenotypeResponse, WebGWASRequest,
+    WebGWASRequestId, WebGWASResponse, WebGWASResult, WebGWASResultStatus,
+};
+use webgwas_backend::phenotype_definitions;
 use webgwas_backend::{config::Settings, models::PhenotypeSummaryRequest};
 use webgwas_backend::{errors::WebGWASError, worker::worker_loop};
-use webgwas_backend::phenotype_definitions;
-use webgwas_backend::models::{
-        ApproximatePhenotypeValues, CohortResponse, FeatureResponse, GetFeaturesRequest,
-        PhenotypeFitQuality, PhenotypeSummary, ValidPhenotypeResponse,
-        WebGWASRequest, WebGWASRequestId, WebGWASResponse, WebGWASResult, WebGWASResultStatus,
-};
+use webgwas_backend::{models::CacheRow, remove_cache_entry, AppState};
 use webgwas_backend::{regression::regress_left_inverse_vec, utils::vec_to_col};
 
 #[tokio::main]
@@ -54,7 +54,7 @@ async fn main() {
     let trace_layer = TraceLayer::new_for_http().make_span_with(|request: &http::Request<_>| {
         let ip = get_client_ip(request);
         tracing::info_span!(
-            "API request",
+            "HTTP server request/response",
             method = %request.method(),
             uri = %request.uri(),
             version = ?request.version(),
@@ -62,10 +62,14 @@ async fn main() {
         )
     });
 
-    let state = {
-        let _span = tracing::info_span!("Initializing state").entered();
-        Arc::new(AppState::new(settings).await.unwrap())
-    };
+    let faer_parallelism = faer::get_global_parallelism();
+    info!("Faer parallelism: {:?}", faer_parallelism);
+    if faer_parallelism == faer::Parallelism::Rayon(0) {
+        let rayon_num_threads = rayon::current_num_threads();
+        info!("Rayon num threads: {}", rayon_num_threads);
+    }
+
+    let state = Arc::new(AppState::new(settings).await.unwrap());
 
     let worker_state = state.clone();
     thread::spawn(move || {
@@ -83,10 +87,19 @@ async fn main() {
             "/api/igwas/results/pvalues/:request_id",
             post(webgwas_backend::endpoints::pvalues::get_igwas_pvalues),
         )
-        .route("/api/download/:request_id", get(webgwas_backend::endpoints::download::download_stream))
+        .route(
+            "/api/download/:request_id",
+            get(webgwas_backend::endpoints::download::download_stream),
+        )
         .layer(trace_layer)
         .layer(CorsLayer::permissive())
-        .layer(CompressionLayer::new().gzip(true).deflate(true).br(true).zstd(true))
+        .layer(
+            CompressionLayer::new()
+                .gzip(true)
+                .deflate(true)
+                .br(true)
+                .zstd(true),
+        )
         .with_state(state);
 
     let listener = tokio::net::TcpListener::bind("0.0.0.0:8000").await.unwrap();
@@ -248,18 +261,20 @@ async fn post_igwas(
 ) -> Json<WebGWASResponse> {
     let unique_id = Uuid::new_v4();
     tracing::info!(
-        request_id = %unique_id, cohort_id = %request.cohort_id, 
-        phenotype = %request.phenotype_definition, "Received webgwas request");
+        request_id = %unique_id, cohort_id = %request.cohort_id,
+        phenotype = %request.phenotype_definition, "Received webgwas request"
+    );
 
-    let cached_result = get_cached_results(&state.db, request.cohort_id, &request.phenotype_definition).await;
+    let cached_result =
+        get_cached_results(&state.db, request.cohort_id, &request.phenotype_definition).await;
     if let Ok(Some(result)) = cached_result {
         if let Ok(request_id) = Uuid::parse_str(&result.request_id) {
             info!("Found cached result");
             return Json(WebGWASResponse {
                 request_id,
                 status: WebGWASResultStatus::Cached,
-                message: None
-            })
+                message: None,
+            });
         }
     }
     info!("Cache miss");
@@ -279,9 +294,19 @@ async fn post_igwas(
 
             let maybe_popped = state.results.lock().unwrap().insert(result);
             if let Some(popped) = maybe_popped {
-                let result_file = popped.local_result_file.expect("Expected to find a local result file");
-                let zip_file = popped.local_zip_file.expect("Expected to find a local zip file");
-                let pop_result = remove_cache_entry(&state.db, &popped.request_id.to_string(), &result_file, &zip_file).await;
+                let result_file = popped
+                    .local_result_file
+                    .expect("Expected to find a local result file");
+                let zip_file = popped
+                    .local_zip_file
+                    .expect("Expected to find a local zip file");
+                let pop_result = remove_cache_entry(
+                    &state.db,
+                    &popped.request_id.to_string(),
+                    &result_file,
+                    &zip_file,
+                )
+                .await;
                 if let Err(err) = pop_result {
                     error!("Error removing local files: {}", err)
                 } else {
@@ -359,7 +384,11 @@ fn get_client_ip<T>(request: &axum::http::Request<T>) -> String {
         .unwrap_or_else(|| "unknown".to_string())
 }
 
-async fn get_cached_results(db: &SqlitePool, cohort_id: i32, phenotype_definition: &str) -> Result<Option<CacheRow>> {
+async fn get_cached_results(
+    db: &SqlitePool,
+    cohort_id: i32,
+    phenotype_definition: &str,
+) -> Result<Option<CacheRow>> {
     let result = sqlx::query_as::<_, CacheRow>(
         "SELECT request_id, cohort_id, phenotype_definition, result_file, zip_file
         FROM cache

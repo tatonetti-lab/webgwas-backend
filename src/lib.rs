@@ -1,5 +1,4 @@
 use anyhow::{anyhow, bail, Context, Result};
-use log::info;
 use models::{CacheRow, Cohort, WebGWASResultStatus};
 use phenotype_definitions::KnowledgeBase;
 use polars::io::parquet::read::ParquetReader;
@@ -14,6 +13,7 @@ use std::{
     fs::File,
     sync::{Arc, Mutex},
 };
+use tracing::debug_span;
 use uuid::Uuid;
 
 pub mod config;
@@ -42,6 +42,7 @@ pub struct AppState {
 
 impl AppState {
     pub async fn new(settings: Settings) -> Result<Self> {
+        let _span = tracing::info_span!("Initializing state").entered();
         let results_dir = Path::new(&settings.results_path);
         if std::fs::exists(results_dir)? {
             std::fs::create_dir_all(results_dir)?;
@@ -87,7 +88,6 @@ impl AppState {
             queue: Arc::new(Mutex::new(Vec::new())),
             results: Arc::new(Mutex::new(cache)),
         };
-        info!("Finished initializing app state");
         Ok(state)
     }
 }
@@ -196,7 +196,7 @@ impl ResultsCache {
     }
 
     pub async fn load(self, db: SqlitePool) -> Result<Self> {
-        info!("Loading cache");
+        let _span = debug_span!("Loading cache").entered();
         let mut result_self = self;
         let rows = sqlx::query_as::<_, CacheRow>(
             "SELECT request_id, cohort_id, phenotype_definition, result_file, zip_file 
