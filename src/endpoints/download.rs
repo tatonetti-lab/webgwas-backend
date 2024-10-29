@@ -1,7 +1,7 @@
 use axum::{
     body::Body,
     extract::{Path, State},
-    http::{header, HeaderMap, HeaderValue, StatusCode},
+    http::{header, HeaderValue, StatusCode},
     response::Response,
 };
 use http::HeaderName;
@@ -25,7 +25,6 @@ pub async fn download_stream(
         .local_zip_file
         .ok_or((StatusCode::NOT_FOUND, "Local path not found".to_string()))?;
 
-    // Convert the full path to just the filename or relative path you want to expose
     let filename = file_path
         .file_name()
         .ok_or((
@@ -37,29 +36,40 @@ pub async fn download_stream(
             StatusCode::INTERNAL_SERVER_ERROR,
             "Non-UTF8 filename".to_string(),
         ))?;
+
     info!("Downloading file {}", filename);
 
-    // Create an X-Accel-Redirect header (for nginx internal redirect)
-    let mut headers = HeaderMap::new();
+    // Build response with proper headers
+    let mut response = Response::builder().status(StatusCode::OK);
+
+    // Add headers directly to the response builder
+    let headers = response.headers_mut().unwrap();
+
+    // Add X-Accel-Redirect header for nginx
     headers.insert(
         HeaderName::from_static("x-accel-redirect"),
         HeaderValue::from_str(&format!("/protected-downloads/{}", filename))
             .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?,
     );
+
+    // Ensure proper content type for zip files
     headers.insert(
         header::CONTENT_TYPE,
         HeaderValue::from_static("application/zip"),
     );
+
+    // Set content disposition with the correct filename
     headers.insert(
         header::CONTENT_DISPOSITION,
-        HeaderValue::from_str(&format!("attachment; filename=\"{}\"", filename))
-            .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?,
+        HeaderValue::from_str(&format!(
+            "attachment; filename=\"{}\"; filename*=UTF-8''{}",
+            filename, filename
+        ))
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?,
     );
 
-    // Return a response with just the headers - nginx will handle the actual file serving
-    let response = Response::builder()
-        .status(StatusCode::OK)
-        .extension(headers)
+    // Build the response with an empty body (nginx will serve the actual file)
+    let response = response
         .body(Body::empty())
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
 
