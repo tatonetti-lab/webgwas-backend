@@ -6,6 +6,7 @@ use axum::{
 };
 use http::HeaderName;
 use std::sync::Arc;
+use tracing::info;
 use uuid::Uuid;
 
 use crate::AppState;
@@ -36,6 +37,7 @@ pub async fn download_stream(
             StatusCode::INTERNAL_SERVER_ERROR,
             "Non-UTF8 filename".to_string(),
         ))?;
+    info!("Downloading file {}", filename);
 
     // Create an X-Accel-Redirect header (for nginx internal redirect)
     let mut headers = HeaderMap::new();
