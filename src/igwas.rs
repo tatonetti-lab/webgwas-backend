@@ -48,33 +48,6 @@ impl Projection {
         Ok(result)
     }
 
-    pub fn remove_zeros(&mut self) {
-        let mut n_features = 0;
-        let mut new_feature_id = Vec::new();
-        let mut new_feature_coefficient = Vec::new();
-        for (feature_id, feature_coefficient) in
-            self.feature_id.iter().zip(self.feature_coefficient.iter())
-        {
-            if feature_coefficient != &0.0 {
-                new_feature_id.push(feature_id.clone());
-                new_feature_coefficient.push(*feature_coefficient);
-                n_features += 1;
-            }
-        }
-        assert_eq!(n_features, new_feature_coefficient.len());
-        assert_eq!(n_features, new_feature_id.len());
-        self.n_features = n_features;
-        self.feature_id = new_feature_id;
-        let mut new_feature_coefficient_col = Col::zeros(n_features);
-        new_feature_coefficient
-            .iter()
-            .enumerate()
-            .for_each(|(i, x)| {
-                new_feature_coefficient_col[i] = *x;
-            });
-        self.feature_coefficient = new_feature_coefficient_col;
-    }
-
     pub fn standardize(&mut self, full_feature_ids: &[String]) {
         assert_eq!(self.n_features, self.feature_coefficient.nrows());
         assert_eq!(self.n_features, self.feature_id.len());
